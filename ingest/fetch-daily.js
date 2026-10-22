@@ -9,8 +9,8 @@ import { appendLogRecord } from './log.js';
 
 const REPO_URL = process.env.GITHUB_REPOSITORY
   ? `https://github.com/${process.env.GITHUB_REPOSITORY}`
-  : 'https://github.com/shrinivas-sn/ppac-petroleum-api';
-export const USER_AGENT = `ppac-petroleum-api (+${REPO_URL})`;
+  : 'https://github.com/shrinivas-sn/india-petroleum-api';
+export const USER_AGENT = `india-petroleum-api (+${REPO_URL})`;
 export const PAGES = [
   'https://ppac.gov.in/retail-selling-price-rsp-of-petrol-diesel-and-domestic-lpg/rsp-of-petrol-and-diesel-in-metro-cities-since-16-6-2017',
   'https://ppac.gov.in/',

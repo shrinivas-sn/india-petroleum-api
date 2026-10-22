@@ -1,4 +1,4 @@
-# ppac-petroleum-api
+# india-petroleum-api
 
 Free, keyless India petroleum API built from PPAC data (fuel price history for the four metros first, monthly petroleum statistics second).
 

@@ -1,0 +1,13 @@
+{
+  "name": "ppac-petroleum-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "India petroleum API from PPAC data: four-metro daily fuel prices and monthly statistics",
+  "scripts": {
+    "test": "node --test ingest/"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

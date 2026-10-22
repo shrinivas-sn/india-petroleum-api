@@ -1,0 +1,78 @@
+# Phase 1 proof: can GitHub-hosted runners find and fully download the daily PPAC metro PDF
+# with TLS checks on? Twice a day; commits only the metadata log (proof/download-log.jsonl).
+name: fetch-proof
+
+on:
+  schedule:
+    - cron: '30 1 * * *' # 07:00 IST
+    - cron: '30 8 * * *' # 14:00 IST
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fetch-proof
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install poppler-utils
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
+      - name: TLS chain as the runner sees it
+        run: |
+          {
+            echo '### TLS check from the runner'
+            echo '```'
+            echo | openssl s_client -connect ppac.gov.in:443 -servername ppac.gov.in 2>&1 | grep -E 'Verif|verify|depth|s:|i:' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download the daily PDF
+        id: fetch
+        continue-on-error: true
+        run: node ingest/fetch-daily.js
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### Last proof record'
+            echo '```json'
+            tail -n 1 proof/download-log.jsonl
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the PDF as an artifact (first run and failures only)
+        if: always() && (github.run_number == 1 || steps.fetch.outcome == 'failure') && hashFiles('work/daily.pdf') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: daily-pdf-${{ github.run_id }}
+          path: work/daily.pdf
+          retention-days: 7
+
+      - name: Commit the proof log
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add proof/download-log.jsonl
+          if git diff --cached --quiet; then echo "No new log line."; exit 0; fi
+          git commit -m "proof: run ${GITHUB_RUN_ID}"
+          git pull --rebase -q && git push
+
+      - name: Fail the job if the download failed
+        if: steps.fetch.outcome == 'failure'
+        run: exit 1

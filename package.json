@@ -5,7 +5,7 @@
   "type": "module",
   "description": "India petroleum API from PPAC data: four-metro daily fuel prices and monthly statistics",
   "scripts": {
-    "test": "node --test ingest/"
+    "test": "node --test \"ingest/**/*.test.js\""
   },
   "engines": {
     "node": ">=22"

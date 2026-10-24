@@ -5,9 +5,16 @@
   "type": "module",
   "description": "India petroleum API from PPAC data: four-metro daily fuel prices and monthly statistics",
   "scripts": {
-    "test": "node --test \"ingest/**/*.test.js\""
+    "test": "node --test \"ingest/**/*.test.js\" \"backend/test/**/*.test.js\"",
+    "test:backend": "node --test \"backend/test/**/*.test.js\"",
+    "start": "node backend/src/index.js"
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.1"
   }
 }

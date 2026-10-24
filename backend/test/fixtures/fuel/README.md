@@ -1,0 +1,1 @@
+Slice of the real `data/fuel/` files: days 2026-05-15 to 2026-06-05 (22 days), the 32 price moves inside it, and `meta.json` with `first_date`, `last_date` and `day_count` set to the slice. Source and hash are the real ones (PPAC table posted 23-Oct-26).

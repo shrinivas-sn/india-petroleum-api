@@ -8,7 +8,7 @@ What is left before the fuel module is public, in order. The generic deploy step
 2. **Link Vercel to GitHub.** The project `india-petroleum-api` exists and is deployed to https://india-petroleum-api.vercel.app, but `vercel git connect` fails because the Vercel GitHub app has no access to this repository. In GitHub go to Settings, Applications, Installed GitHub Apps, Vercel, Configure, and add `india-petroleum-api` under repository access; then run `vercel git connect` in this folder (or use the project's Git settings in the Vercel dashboard). Until it is linked, new data committed by `fuel-ingest` does not reach the site: redeploy by hand with `vercel deploy --prod`. No environment variables are needed; Vercel supplies the production host to the build, which sets canonical tags, `sitemap.xml` and `robots.txt`.
 3. **Search Console.** Add the property, download the `google<token>.html` file into `frontend/public/` and commit it. Without it the `gsc-file` check fails. Submit `sitemap.xml` under Indexing > Sitemaps.
 4. **Optional: make CI a merge gate.** `ci.yml` reports on every push to main and every pull request, but it blocks nothing until `verify` is a required check in the branch protection rules. If you require it, let the ingest bot's direct push to main bypass the rule: its commits come from the workflow token and do not start CI.
-5. **After the first deploy:** `node api-projects/pipeline/deploy/record-live.js --project api-projects/projects/india-petroleum-api --portal <url> --api <url>`, then fill `routes` in `api.json` (the list is in `docs/DECISIONS.md`, "routes stay empty until go-live"), run `run-checks.js --stage production` against the live URL, and run `prod-site-auditor` on it.
+5. **Done on 24 Oct 2026:** `record-live.js` recorded the live URLs, `api.json` has its routes, and `run-checks.js --stage production` against the live URL passes 13 of 14 (only `gsc-file` fails, step 3). `prod-site-auditor` was run on the live URL; its result is in the plan Progress Log.
 
 ## When the daily job refuses the data
 
@@ -21,7 +21,7 @@ The job fails closed: nothing is committed, the PDF and a failure report are kep
 
 ## Copy that is only true once the schedule is on
 
-- Status page, "How the data gets here": says a GitHub Actions job downloads, checks and commits the data and the site is redeployed. True only after step 1 and after Vercel is connected to the repo. Until then the data is refreshed by running `fuel-ingest` by hand.
+- Status page, "How the data gets here": says a GitHub Actions job downloads, checks and commits the data and the site is redeployed. True only after step 1 and after Vercel is connected to the repo. Until then the data is refreshed by running `fuel-ingest` by hand, and until Vercel is linked to the repository (step 2) a refreshed commit is not deployed either.
 - Home page: "Prices have been revised daily since June 2017" is about the source and stays true either way. The page shows the age of the data through the status page's "days behind".
 
 ## Not covered yet

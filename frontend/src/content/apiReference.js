@@ -1,5 +1,5 @@
 // What the Docs page documents. docs-parity.test.mjs checks this list against the routes the
-// backend actually registers, so the page cannot describe an endpoint that does not exist.
+// backend registers, so the page cannot describe an endpoint that does not exist.
 // `example` names an entry in snapshot.examples: a real answer captured at build time.
 
 const CITY_PARAM = {

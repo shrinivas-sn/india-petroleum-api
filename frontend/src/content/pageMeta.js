@@ -11,29 +11,29 @@ export const PAGE_META = {
       'Free, keyless REST API for daily petrol and diesel prices in Delhi, Mumbai, Chennai and Kolkata since June 2017, from the PPAC price table.',
   },
   '/docs': {
-    title: 'API reference — India Petroleum API',
+    title: 'API reference | India Petroleum API',
     description:
       'Endpoints, parameters, error codes, rate limit and real JSON responses for the India Petroleum API: daily metro petrol and diesel prices from PPAC.',
   },
   '/playground': {
-    title: 'Playground — India Petroleum API',
+    title: 'Playground | India Petroleum API',
     description:
       'Run live requests against the India Petroleum API: pick a metro, a fuel and a date range, see the prices on a chart and copy the matching request.',
   },
   '/guides': {
-    title: 'Guides — India Petroleum API',
+    title: 'Guides | India Petroleum API',
     description:
       'Guides to the PPAC metro fuel price series: what a row means, how often prices changed since 2017, and how to compare Mumbai with Delhi in code.',
   },
   '/status': {
-    title: 'Status and data freshness — India Petroleum API',
+    title: 'Status and data freshness | India Petroleum API',
     description:
       'Live service status for the India Petroleum API: newest price date, PPAC table date, days behind, and where the stored data comes from.',
   },
 };
 
 export const NOT_FOUND_META = {
-  title: 'Page not found — India Petroleum API',
+  title: 'Page not found | India Petroleum API',
   description:
     'This page does not exist. Go to the API reference, the playground or the guides for daily metro petrol and diesel prices from PPAC.',
 };

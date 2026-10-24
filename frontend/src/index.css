@@ -27,6 +27,7 @@
   --space-5: 1.5rem;
   --space-6: 2rem;
   --space-7: 3rem;
+  --space-8: 4rem;
   --gutter: 1rem;
   color-scheme: light;
 }
@@ -243,7 +244,7 @@ code {
   .hero {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
     align-items: start;
-    gap: 4rem;
+    gap: var(--space-8);
   }
 }
 
@@ -265,7 +266,7 @@ code {
 
 .plain {
   margin: 0 0 var(--space-4);
-  padding-left: 1.1rem;
+  padding-left: var(--space-5);
 }
 
 .plain li {
@@ -755,7 +756,7 @@ code {
 .badge__mark {
   width: 0.7rem;
   height: 0.7rem;
-  margin-right: 0.4rem;
+  margin-right: var(--space-2);
   background: currentColor;
   border-radius: 50%;
 }
@@ -792,7 +793,7 @@ code {
 
 .steps {
   max-width: 42rem;
-  padding-left: 1.25rem;
+  padding-left: var(--space-5);
 }
 
 .steps li {

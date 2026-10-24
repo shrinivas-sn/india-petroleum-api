@@ -27,11 +27,11 @@
     },
     {
       "source": "/v1/prices(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, s-maxage=3600" }]
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, s-maxage=300" }]
     },
     {
       "source": "/v1/cities",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, s-maxage=3600" }]
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, s-maxage=300" }]
     },
     {
       "source": "/v1/meta",

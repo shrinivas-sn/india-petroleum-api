@@ -51,7 +51,7 @@ export default function DocsPage() {
           <li>Rate limit: {RATE_LIMIT_TEXT}. Past it, that instance answers 429 RATE_LIMITED. The count is not shared between instances, so treat the limit as approximate.</li>
           <li>
             Answers come from files stored with the service, so they do not wait on PPAC. Responses are cacheable by a CDN
-            for an hour; a new day of data is published with a new deployment.
+            for five minutes. The API checks the repository for newer data about every ten minutes, so a new day appears within roughly fifteen minutes of the daily job committing it.
           </li>
         </ul>
       </section>

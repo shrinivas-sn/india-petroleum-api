@@ -1,14 +1,18 @@
 import { formatChange, formatDate, formatPrice } from '../lib/format';
+import { PERIODS } from '../lib/recent';
 import { CITIES, FUELS } from '../lib/series';
 
 /**
- * Latest price per city and fuel, with the size and date of the last move under each figure.
- * `lastMoves` is null when unknown, in which case the line under each figure is left out.
+ * Today's price per city and fuel, with the change over the last 1, 7 and 30 days under each figure.
+ * `changes` is lib/recent.js's changesOver(); when it is null the board shows today's prices alone.
  */
-export default function PriceBoard({ latest, lastMoves }) {
+export default function PriceBoard({ latest, changes }) {
   return (
     <table className="board">
-      <caption>Retail price in rupees per litre on {formatDate(latest.date)}</caption>
+      <caption>
+        Retail price in rupees per litre on {formatDate(latest.date)}
+        {changes ? '. Under each price: the change over the last 1, 7 and 30 days.' : ''}
+      </caption>
       <thead>
         <tr>
           <th scope="col">City</th>
@@ -23,19 +27,24 @@ export default function PriceBoard({ latest, lastMoves }) {
         {CITIES.map((city) => (
           <tr key={city.slug}>
             <th scope="row">{city.name}</th>
-            {FUELS.map((fuel) => {
-              const move = lastMoves?.[fuel.slug]?.[city.slug];
-              return (
-                <td key={fuel.slug} className="num">
-                  <span className="board__price">{formatPrice(latest[fuel.slug][city.slug])}</span>
-                  {lastMoves && (
-                    <span className="board__since">
-                      {move ? `Last change ${formatChange(move.to - move.from)} on ${formatDate(move.date)}` : 'No change on record'}
-                    </span>
-                  )}
-                </td>
-              );
-            })}
+            {FUELS.map((fuel) => (
+              <td key={fuel.slug} className="num">
+                <span className="board__price">{formatPrice(latest[fuel.slug][city.slug])}</span>
+                {changes && (
+                  <dl className="board__changes">
+                    {PERIODS.map((period) => {
+                      const delta = changes[fuel.slug]?.[city.slug]?.[period.id];
+                      return (
+                        <div key={period.id}>
+                          <dt>{period.label}</dt>
+                          <dd>{delta === null || delta === undefined ? '–' : formatChange(delta)}</dd>
+                        </div>
+                      );
+                    })}
+                  </dl>
+                )}
+              </td>
+            ))}
           </tr>
         ))}
       </tbody>

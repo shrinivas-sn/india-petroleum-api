@@ -5,12 +5,15 @@ import { STALE_AFTER_DAYS, bannerFor, loadLive, offlineState, readLive, snapshot
 const CITIES = ['delhi', 'mumbai', 'chennai', 'kolkata'];
 const prices = (base) => Object.fromEntries(CITIES.map((c, i) => [c, base + i]));
 const day = (date, base = 90) => ({ date, petrol: prices(base + 10), diesel: prices(base) });
-const noMoves = () => ({ petrol: Object.fromEntries(CITIES.map((c) => [c, null])), diesel: Object.fromEntries(CITIES.map((c) => [c, null])) });
+const addDay = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+/** 31 daily rows ending on `last`, as /v1/prices answers for the last month. */
+const monthRows = (last) => Array.from({ length: 31 }, (_, i) => day(addDay(last, i - 30)));
+const pricesBody = (last = '2026-10-23') => ({ success: true, data: monthRows(last), meta: { count: 31 } });
 
 const snapshot = {
   meta: { first_date: '2017-06-16', last_date: '2026-10-21', day_count: 3415 },
   latest: day('2026-10-21'),
-  last_moves: noMoves(),
+  examples: { board: { body: pricesBody('2026-10-21') } },
 };
 
 const metaBody = (over = {}) => ({
@@ -32,7 +35,7 @@ const metaBody = (over = {}) => ({
 const latestBody = (over = {}) => ({
   success: true,
   data: day('2026-10-23'),
-  meta: { count: 1, last_change: noMoves(), ...over },
+  meta: { count: 1, ...over },
 });
 
 const now = new Date('2026-10-24T03:00:00Z'); // 24 October, 08:30 in India
@@ -42,22 +45,32 @@ test('the snapshot state shows build-time data and claims nothing about freshnes
   assert.equal(state.status, 'snapshot');
   assert.equal(state.meta.last_date, '2026-10-21');
   assert.equal(state.daysBehind, null);
+  assert.equal(state.recent.length, 31, 'the last month captured at build time comes with it');
   assert.equal(bannerFor(state), null, 'no banner before the API has answered, or the prerendered page would carry one');
 });
 
-test('readLive takes the API answers, the server days_behind and the last changes', () => {
-  const state = readLive(metaBody({ days_behind: 1 }), latestBody(), now);
+test('a snapshot without a usable month of rows still works, with no changes to show', () => {
+  assert.equal(snapshotState({ ...snapshot, examples: {} }).recent, null);
+  assert.equal(snapshotState({ ...snapshot, examples: { board: { body: { success: true, data: 'nope' } } } }).recent, null);
+});
+
+test('readLive takes the API answers, the server days_behind and the last month of rows', () => {
+  const state = readLive(metaBody({ days_behind: 1 }), latestBody(), now, pricesBody());
   assert.equal(state.status, 'live');
   assert.equal(state.meta.last_date, '2026-10-23');
   assert.equal(state.latest.date, '2026-10-23');
   assert.equal(state.daysBehind, 1);
   assert.equal(state.checkedAt, now.toISOString());
-  assert.deepEqual(state.lastMoves, noMoves());
+  assert.equal(state.recent.length, 31);
+  assert.equal(state.recent.at(-1).date, '2026-10-23');
 });
 
-test('readLive keeps going without last_change (an older API) and marks it unknown', () => {
-  const state = readLive(metaBody(), { success: true, data: day('2026-10-23'), meta: { count: 1 } }, now);
-  assert.equal(state.lastMoves, null);
+test('readLive without a month of rows, or with a bad one, is still live and has no changes to show', () => {
+  assert.equal(readLive(metaBody(), latestBody(), now).recent, null);
+  assert.equal(readLive(metaBody(), latestBody(), now, { success: true, data: [] }).recent, null);
+  assert.equal(readLive(metaBody(), latestBody(), now, { success: true, data: [{ date: 'soon' }] }).recent, null);
+  assert.equal(readLive(metaBody(), latestBody(), now, { success: false, error: { code: 'X' } }).recent, null);
+  assert.equal(readLive(metaBody(), latestBody(), now, null).status, 'live');
 });
 
 test('readLive refuses answers of the wrong shape instead of rendering NaN', () => {
@@ -82,23 +95,51 @@ test('readLive refuses meta the status page could not show safely: no javascript
   assert.throws(() => readLive(metaBody({ source_posted_date: 'soon' }), latestBody(), now), /meta/i);
 });
 
-test('loadLive asks for meta and the newest day, and returns a live state', async () => {
+const fakeApi = (over = {}) => {
   const asked = [];
   const get = async (path) => {
     asked.push(path);
-    return { body: path === '/v1/meta' ? metaBody() : latestBody(), status: 200, ms: 5 };
+    if (over[path]) return over[path]();
+    if (path === '/v1/meta') return { body: metaBody(), status: 200, ms: 5 };
+    if (path === '/v1/prices/latest') return { body: latestBody(), status: 200, ms: 5 };
+    return { body: pricesBody(), status: 200, ms: 5 };
   };
-  const state = await loadLive(get, { now });
-  assert.deepEqual(asked.sort(), ['/v1/meta', '/v1/prices/latest']);
+  return { get, asked };
+};
+
+test('loadLive asks for meta, the newest day and the 31 days up to it, and returns a live state with the rows', async () => {
+  const api = fakeApi();
+  const state = await loadLive(api.get, { now });
+  assert.deepEqual(api.asked.sort(), ['/v1/meta', '/v1/prices/latest', '/v1/prices?from=2026-09-23&to=2026-10-23']);
   assert.equal(state.status, 'live');
+  assert.equal(state.recent.length, 31);
 });
 
-test('loadLive fails when either call fails', async () => {
-  const get = async (path) => {
-    if (path === '/v1/meta') throw new Error('Could not reach the API.');
-    return { body: latestBody(), status: 200, ms: 5 };
-  };
-  await assert.rejects(loadLive(get, { now }), /Could not reach/);
+test('loadLive counts the month back from the newest day the API reports, not from today', async () => {
+  const api = fakeApi({ '/v1/prices/latest': () => ({ body: { success: true, data: day('2026-10-19'), meta: {} }, status: 200, ms: 1 }) });
+  await loadLive(api.get, { now });
+  assert.ok(api.asked.includes('/v1/prices?from=2026-09-19&to=2026-10-19'), api.asked.join(' '));
+});
+
+test('loadLive fails when meta or the newest day fails', async () => {
+  const noMeta = fakeApi({ '/v1/meta': () => { throw new Error('Could not reach the API.'); } });
+  await assert.rejects(loadLive(noMeta.get, { now }), /Could not reach/);
+  const noLatest = fakeApi({ '/v1/prices/latest': () => { throw new Error('Could not reach the API.'); } });
+  await assert.rejects(loadLive(noLatest.get, { now }), /Could not reach/);
+});
+
+test('loadLive stays live without the changes when only the month of rows fails', async () => {
+  const api = fakeApi({ '/v1/prices?from=2026-09-23&to=2026-10-23': () => { throw new Error('The API answered 503.'); } });
+  const state = await loadLive(api.get, { now });
+  assert.equal(state.status, 'live');
+  assert.equal(state.recent, null);
+  assert.equal(state.latest.date, '2026-10-23');
+});
+
+test('loadLive does not swallow an abort: a superseded load must stay cancelled', async () => {
+  const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+  const api = fakeApi({ '/v1/prices?from=2026-09-23&to=2026-10-23': () => { throw abort; } });
+  await assert.rejects(loadLive(api.get, { now }), (error) => error.name === 'AbortError');
 });
 
 test('offlineState keeps the snapshot figures, records why, and counts days from the snapshot date', () => {

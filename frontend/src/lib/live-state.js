@@ -1,11 +1,12 @@
 // What the pages know about how current their data is. Three states share one shape:
 //   snapshot  the figures baked in at build time, before the API has answered (also the prerendered HTML)
-//   live      the API's own answers for /v1/meta and /v1/prices/latest
+//   live      the API's own answers for /v1/meta, /v1/prices/latest and the last month of /v1/prices
 //   offline   the API did not answer; the snapshot stays on screen and says so
 // Nothing here touches the DOM or React, so every rule is covered by node tests.
+import { pricesPath } from './api.js';
 import { formatDate } from './format.js';
 import { daysBehind } from './range.js';
-import { CITY_SLUGS, FUEL_SLUGS } from './series.js';
+import { CITY_SLUGS, FUEL_SLUGS, addDays } from './series.js';
 
 // More than this many days behind means the daily job has stalled; fewer is normal around
 // weekends and holidays. Same limit as ingest/freshness.js.
@@ -20,7 +21,8 @@ export function snapshotState(snapshot) {
     status: 'snapshot',
     meta: snapshot.meta,
     latest: snapshot.latest,
-    lastMoves: snapshot.last_moves,
+    // The last 31 days for every city and fuel, as the API returned them at build time.
+    recent: checkRecent(snapshot.examples?.board?.body),
     daysBehind: null,
     checkedAt: null,
     error: null,
@@ -73,27 +75,45 @@ function checkLatest(body) {
   return day;
 }
 
-/** A live state from the two API answers; throws when either is not what this page can draw. */
-export function readLive(metaBody, latestBody, now = new Date()) {
+/** The /v1/prices answer for the last month as a list of dated rows, or null if it is not one (the board then shows no changes). */
+function checkRecent(body) {
+  const rows = body?.data;
+  if (body?.success === false || !Array.isArray(rows) || rows.length === 0) return null;
+  return rows.every((row) => row && isIso(row.date)) ? rows : null;
+}
+
+/**
+ * A live state from the API answers; throws when meta or the newest day is not what this page can draw.
+ * `pricesBody` is the last month of daily rows; without a usable one `recent` is null and the board shows
+ * today's prices without the 1, 7 and 30 day changes.
+ */
+export function readLive(metaBody, latestBody, now = new Date(), pricesBody = null) {
   const meta = checkMeta(metaBody);
   const latest = checkLatest(latestBody);
-  const lastChange = latestBody.meta?.last_change;
   return {
     status: 'live',
     meta,
     latest,
-    // Absent on an API older than last_change: the board then leaves the line out instead of guessing.
-    lastMoves: lastChange && typeof lastChange === 'object' ? lastChange : null,
+    recent: checkRecent(pricesBody),
     daysBehind: meta.days_behind,
     checkedAt: now.toISOString(),
     error: null,
   };
 }
 
-/** Fetches both answers with `get` (the api.js client) and returns a live state. */
+/**
+ * Fetches the metadata, the newest day and the 31 days up to it with `get` (the api.js client). The first two
+ * are required; if the month of rows fails the state is still live, just without the changes.
+ */
 export async function loadLive(get, { signal, now = new Date() } = {}) {
   const [meta, latest] = await Promise.all([get('/v1/meta', { signal }), get('/v1/prices/latest', { signal })]);
-  return readLive(meta.body, latest.body, now);
+  const state = readLive(meta.body, latest.body, now);
+  const to = state.latest.date;
+  const month = await get(pricesPath({ city: '', fuel: '', from: addDays(to, -30), to }), { signal }).catch((error) => {
+    if (error?.name === 'AbortError') throw error;
+    return null;
+  });
+  return month ? { ...state, recent: checkRecent(month.body) } : state;
 }
 
 /** The snapshot kept on screen after a failed call, with the reason and how old the snapshot is. */

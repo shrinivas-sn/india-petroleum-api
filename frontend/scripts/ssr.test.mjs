@@ -79,18 +79,23 @@ const metaBody = (over = {}) => ({
   success: true,
   data: { ...snap.meta, days_behind: 0, data_source: 'remote', checked_at: NOW.toISOString(), refresh_error: null, ...over },
 });
-const latestBody = (day = snap.latest, lastChange = snap.last_moves) => ({
-  success: true,
-  data: day,
-  meta: lastChange === false ? {} : { last_change: lastChange },
-});
-const fresh = () => readLive(metaBody(), latestBody(), NOW);
-const stale = (daysBehind = 5) => readLive(metaBody({ days_behind: daysBehind }), latestBody(), NOW);
+const latestBody = (day = snap.latest) => ({ success: true, data: day, meta: { count: 1 } });
+const monthBody = () => snap.examples.board.body;
+const fresh = () => readLive(metaBody(), latestBody(), NOW, monthBody());
+const stale = (daysBehind = 5) => readLive(metaBody({ days_behind: daysBehind }), latestBody(), NOW, monthBody());
 const offline = () => offlineState(snapshotState(snap), 'Could not reach the API. Check your connection and try again.', new Date('2026-10-30T03:00:00Z'));
 const newerDay = (date) => {
   const day = { ...snap.latest, date, petrol: { ...snap.latest.petrol, delhi: 103.5 }, diesel: { ...snap.latest.diesel } };
-  return readLive(metaBody({ last_date: date, day_count: snap.meta.day_count + 7 }), latestBody(day), NOW);
+  // The rows the API would return: the build's days, then one flat day after another up to the new one,
+  // which alone carries the new Delhi petrol price.
+  const rows = [...monthBody().data];
+  for (let d = Date.parse(`${snap.latest.date}T00:00:00Z`) + 86400000; d < Date.parse(`${date}T00:00:00Z`); d += 86400000) {
+    rows.push({ ...snap.latest, date: new Date(d).toISOString().slice(0, 10) });
+  }
+  rows.push(day);
+  return readLive(metaBody({ last_date: date, day_count: snap.meta.day_count + 7 }), latestBody(day), NOW, { success: true, data: rows });
 };
+const boardOf = (html) => html.slice(html.indexOf('<table class="board">'), html.indexOf('</table>', html.indexOf('<table class="board">')) + 8);
 
 const ROUTES = () => ['/', '/docs', '/playground', '/guides', `/guides/${mod.guides.GUIDES[0].id}`, '/status', '/no-such-page'];
 
@@ -137,16 +142,35 @@ test('offline keeps the build-time figures on screen, says so everywhere, and of
   assert.ok(page('/', state).includes(snap.latest.diesel.kolkata.toFixed(2)), 'the build-time board is still drawn');
 });
 
-test('an API without last_change leaves the "last change" lines out instead of claiming no change', () => {
-  const html = plain(page('/', readLive(metaBody(), latestBody(snap.latest, false), NOW)));
-  assert.doesNotMatch(html, /Last change|No change on record/);
-  assert.match(plain(page('/', fresh())), /Last change/);
+test('the board shows the change over 1, 7 and 30 days under every price, and no "last change" or old date anywhere in it', () => {
+  for (const [name, state] of [['prerendered', snapshotState(snap)], ['live', fresh()], ['stale', stale()]]) {
+    const board = boardOf(page('/', state));
+    assert.equal(count(board, 'class="board__changes"'), 8, `${name}: one block per city and fuel`);
+    assert.equal(count(board, '<dt>1 day</dt>'), 8, name);
+    assert.equal(count(board, '<dt>7 days</dt>'), 8, name);
+    assert.equal(count(board, '<dt>30 days</dt>'), 8, name);
+    assert.doesNotMatch(plain(board), /Last change|No change on record|May|2026-/, `${name}: nothing about an old price move`);
+    assert.match(plain(board), /Under each price: the change over the last 1, 7 and 30 days/, name);
+  }
+});
+
+test('without a month of rows the board shows today\'s prices alone, with no changes and no made-up zeros', () => {
+  const board = boardOf(page('/', readLive(metaBody(), latestBody(), NOW)));
+  assert.equal(count(board, 'board__changes'), 0);
+  assert.doesNotMatch(plain(board), /Under each price/);
+  assert.ok(board.includes(snap.latest.petrol.delhi.toFixed(2)));
+});
+
+test('a price that did not move reads 0.00 for every period', () => {
+  const board = plain(boardOf(page('/', fresh())));
+  assert.match(board, /1 day 0\.00 7 days 0\.00 30 days 0\.00/);
 });
 
 test('a day newer than the build reaches the board and moves the playground window with it', () => {
   const state = newerDay('2026-10-30');
   const home = page('/', state);
   assert.ok(home.includes('103.50'), 'the new Delhi price is on the board');
+  assert.match(plain(boardOf(home)), /Delhi 103\.50 1 day \+1\.38 7 days \+1\.38 30 days \+1\.38/, 'and what it moved over the last 1, 7 and 30 days');
   assert.match(plain(home), /newest day 30 Oct 2026/);
   const playground = page('/playground', state);
   const { from } = exampleWindow('2026-10-30', 30);

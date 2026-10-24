@@ -23,19 +23,6 @@ export function longestFlat(days, city) {
   return { ...best, petrol: startDay?.petrol[city] ?? null, diesel: startDay?.diesel[city] ?? null };
 }
 
-/** Per fuel and city, the most recent change: { date, from, to }, or null if it never changed. */
-export function lastMoves(moves) {
-  const out = {};
-  for (const fuel of FUELS) {
-    out[fuel] = {};
-    for (const city of CITIES) {
-      const found = [...moves].reverse().find((m) => m.fuel === fuel && m.city === city);
-      out[fuel][city] = found ? { date: found.date, from: found.from, to: found.to } : null;
-    }
-  }
-  return out;
-}
-
 const round2 = (n) => Math.round(n * 100) / 100;
 
 /**
@@ -86,7 +73,6 @@ export function buildSnapshot({ days, moves, meta, examples = {} }) {
     },
     latest: days[days.length - 1],
     previous: days.length > 1 ? days[days.length - 2] : null,
-    last_moves: lastMoves(moves),
     highlights: highlights(moves),
     longest_flat: longestFlat(days, 'delhi'),
     revision_days_by_year: revisionDaysByYear(moves),

@@ -6,6 +6,7 @@ import PriceBoard from '../components/PriceBoard';
 import { PPAC_TABLE_URL } from '../content/site';
 import snapshot from '../generated/snapshot.json';
 import { formatChange, formatCount, formatDate, formatDateTime } from '../lib/format';
+import { changesOver } from '../lib/recent';
 import { useLiveData } from '../lib/live';
 import { cityName, fuelName } from '../lib/series';
 import { useOrigin } from '../lib/site';
@@ -40,7 +41,8 @@ function FreshnessNote({ state }) {
 export default function HomePage() {
   const origin = useOrigin();
   const { state } = useLiveData();
-  const { latest, lastMoves, meta } = state;
+  const { latest, recent, meta } = state;
+  const changes = changesOver(recent, latest.date);
 
   return (
     <>
@@ -58,7 +60,7 @@ export default function HomePage() {
           </p>
         </div>
         <div>
-          <PriceBoard latest={latest} lastMoves={lastMoves} />
+          <PriceBoard latest={latest} changes={changes} />
           <FreshnessNote state={state} />
         </div>
       </section>

@@ -7,6 +7,7 @@ export function examplePaths({ first_date: first, last_date: last }) {
   const month = exampleWindow(last, 30);
   const year = exampleWindow(last, 365);
   const fiveDays = exampleWindow(last, 5);
+  const board = exampleWindow(last, 31);
   const quarter = windowFor('3m', first, last);
   return {
     latest: '/v1/prices/latest',
@@ -17,7 +18,8 @@ export function examplePaths({ first_date: first, last_date: last }) {
     health: '/health',
     missingParam: '/v1/prices?city=delhi',
     unknownFuel: `/v1/prices?city=delhi&fuel=kerosene&from=${fiveDays.from}&to=${fiveDays.to}`,
-    // First paint of the playground (30 days) and of the home chart (3 months), until the API answers.
+    // First paint of the price board (31 days, every city), the playground (30 days) and the home chart (3 months), until the API answers.
+    board: `/v1/prices?from=${board.from}&to=${board.to}`,
     playground: `/v1/prices?city=delhi&from=${month.from}&to=${month.to}`,
     recent: `/v1/prices?city=delhi&from=${quarter.from}&to=${quarter.to}`,
   };

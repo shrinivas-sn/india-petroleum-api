@@ -34,12 +34,24 @@
     }
   },
   "deploy": {
-    "portal_url": null,
-    "api_base_url": null,
+    "portal_url": "https://india-petroleum-api.vercel.app",
+    "api_base_url": "https://india-petroleum-api.vercel.app",
     "health_path": "/health",
     "warmup_path": "/health"
   },
-  "routes": [],
+  "routes": [
+    { "path": "/", "base": "portal", "kind": "page" },
+    { "path": "/docs", "base": "portal", "kind": "page" },
+    { "path": "/playground", "base": "portal", "kind": "page" },
+    { "path": "/guides", "base": "portal", "kind": "page" },
+    { "path": "/status", "base": "portal", "kind": "page" },
+    { "path": "/v1/prices/latest", "base": "api", "kind": "api" },
+    { "path": "/v1/prices?city=delhi&fuel=petrol&from=2026-05-01&to=2026-05-31", "base": "api", "kind": "api" },
+    { "path": "/v1/prices/changes?city=delhi&fuel=petrol&from=2026-05-01&to=2026-05-31", "base": "api", "kind": "api" },
+    { "path": "/v1/cities", "base": "api", "kind": "api" },
+    { "path": "/v1/meta", "base": "api", "kind": "api" },
+    { "path": "/health", "base": "api", "kind": "api" }
+  ],
   "submission": {
     "terms": [
       "petrol price India",

@@ -44,4 +44,4 @@ cd frontend && npm install && npm run build   # portal into frontend/dist, serve
 
 ## Status
 
-The fuel module is built and tested but not deployed. What is left, and who does it, is in `docs/GO-LIVE.md`. Monthly petroleum statistics (consumption, production and trade from data.gov.in) are not built. `docs/DECISIONS.md` records why the code looks the way it does, and `docs/DATA-NOTES.md` records how PPAC's file is read and checked.
+The fuel module is live at https://india-petroleum-api.vercel.app (deployed 24 October 2026 from the local source with the Vercel CLI). The Vercel project is not yet linked to this GitHub repository, so a push does not redeploy it; what is left, and who does it, is in `docs/GO-LIVE.md`. Monthly petroleum statistics (consumption, production and trade from data.gov.in) are not built. `docs/DECISIONS.md` records why the code looks the way it does, and `docs/DATA-NOTES.md` records how PPAC's file is read and checked.

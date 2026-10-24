@@ -15,5 +15,5 @@ CRLF turned into LF. Line numbers are 1-based lines of that raw text (3,700 line
 | `home-snippet.html`, `metro-snippet.html` | n/a | Saved PPAC page snippets for link discovery |
 
 Why `-raw`: `-layout` output of the same file puts each diesel date one row below its values and drifts a day
-at page breaks; `-raw` rows read `DATE p p p p DATE d d d d` with equal dates and reproduce three dated news
-events exactly (see Plan issue 5 in `DOCS/PLAN-india-petroleum-api.md`).
+at page breaks; `-raw` rows read `DATE p p p p DATE d d d d` with equal dates and reproduce two dated news
+events with their Delhi prices (22-Mar-22, 22-May-22; sources in `docs/DATA-NOTES.md`) (see Plan issue 5 in `DOCS/PLAN-india-petroleum-api.md`).

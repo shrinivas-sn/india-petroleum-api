@@ -1,0 +1,88 @@
+# Daily fuel ingestion: download the PPAC metro PDF, check it, commit data/fuel/ only when
+# something truly changed. Manual only until the Phase 1 proof week gives the posting window
+# (docs/PROOF-1.md); the cron is added then and fetch-proof.yml is retired in the same commit.
+name: fuel-ingest
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fuel-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install poppler-utils
+        run: |
+          sudo apt-get update && sudo apt-get install -y poppler-utils
+          { echo '### pdftotext on this runner'; echo '```'; pdftotext -v 2>&1 | head -n 1; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Ingest
+        id: ingest
+        continue-on-error: true
+        run: node ingest/run-fuel.js
+
+      - name: Tests
+        if: steps.ingest.outcome == 'success'
+        run: npm test
+
+      - name: Keep the PDF and the failure report when a check refused the data
+        if: always() && steps.ingest.outcome == 'failure' && hashFiles('work/daily.pdf') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuel-ingest-failure-${{ github.run_id }}
+          path: |
+            work/daily.pdf
+            work/failure-report.txt
+          retention-days: 7
+
+      - name: Commit only if data actually changed
+        if: steps.ingest.outcome == 'success'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/fuel
+          if git diff --cached --quiet; then
+            echo "No data change."
+          else
+            git commit -m "$(cat work/commit-message.txt)"
+          fi
+          git add proof/download-log.jsonl
+          if ! git diff --cached --quiet; then git commit -m "proof: run ${GITHUB_RUN_ID}"; fi
+          git pull --rebase -q && git push
+
+      - name: Fail the job when ingestion failed
+        if: steps.ingest.outcome == 'failure'
+        run: exit 1
+
+  freshness:
+    needs: ingest
+    if: always() && needs.ingest.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Newest stored day is at most two IST days old
+        run: node ingest/freshness.js | tee -a "$GITHUB_STEP_SUMMARY"

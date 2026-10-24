@@ -1,0 +1,17 @@
+Table Posted: 22-Oct-26
+Delhi Mumbai Chennai Kolkata Delhi Mumbai Chennai Kolkata
+Petroleum Planning & Analysis Cell
+Retail Selling Price of Petrol Retail Selling Price of Diesel
+Date of
+Revision
+Date of Revision
+(Rs./Litre) (Rs./Litre)
+20-Jun-17 64.55 75.78 67.04 67.30 20-Jun-17 53.96 59.34 56.85 56.12
+19-Jun-17 64.65 75.88 67.14 67.37 19-Jun-17 54.01 59.39 56.89 56.16
+18-Jun-17 64.91 76.14 67.42 67.58 18-Jun-17 54.14 59.53 57.03 56.29
+17-Jun-17 65.23 76.46 67.76 67.84 17-Jun-17 54.32 59.73 57.23 56.48
+16-Jun-17 65.48 76.70 68.02 68.03 16-Jun-17 54.49 59.90 57.41 56.65
+Note:
+*RSP of Petrol/Diesel is for IOC
+** Daily price change is applicable in India since 16.6.2017
+***Daily Price change is applicable from 6.00 AM

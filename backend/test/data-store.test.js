@@ -309,3 +309,129 @@ test('through the app: when the remote is down the API still answers from its la
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+// --- hardening from the production-readiness audit of data-store.js (24 Oct 2026) ---------------------------
+
+test('a body is read as a stream and cut off at the size cap, so a small compressed file cannot be inflated in memory', async () => {
+  const remote = fakeRemote(dataset(2));
+  let pulled = 0;
+  const huge = new ReadableStream({
+    pull(controller) {
+      pulled += 1;
+      controller.enqueue(new Uint8Array(400));
+      if (pulled > 200) controller.close();
+    },
+  });
+  remote.fail = () => ({
+    status: 200,
+    ok: true,
+    headers: { get: () => null },
+    body: huge,
+    text: async () => {
+      throw new Error('text() would buffer the whole body');
+    },
+  });
+  const { service, store } = storeWith(remote, { maxBytes: 1000 });
+  await store.ensureFresh();
+  assert.match(store.status().refresh_error, /too large/);
+  assert.ok(pulled <= 6, `read ${pulled} chunks after the cap was hit`);
+  assert.equal(service.meta.last_date, '2026-06-05');
+});
+
+test('a normal body that arrives as a stream is accepted', async () => {
+  const remote = fakeRemote(dataset(2));
+  const original = remote.fetchFn;
+  remote.fetchFn = async (url, options) => {
+    const res = await original(url, options);
+    if (res.status !== 200) return res;
+    const text = await res.text();
+    return { ...res, body: new Response(text).body, text: async () => { throw new Error('use the stream'); } };
+  };
+  const { service, store } = storeWith(remote);
+  await store.ensureFresh();
+  assert.equal(store.status().refresh_error, null);
+  assert.equal(service.meta.last_date, '2026-06-07');
+});
+
+test('daily.json and changes.json are requested together, not one after the other', async () => {
+  const remote = fakeRemote(dataset(2));
+  const original = remote.fetchFn;
+  const order = [];
+  remote.fetchFn = async (url, options) => {
+    const name = url.split('/').pop();
+    order.push(`start ${name}`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const res = await original(url, options);
+    order.push(`end ${name}`);
+    return res;
+  };
+  const { service, store } = storeWith(remote);
+  await store.ensureFresh();
+  assert.equal(service.meta.last_date, '2026-06-07');
+  assert.ok(order.indexOf('start changes.json') < order.indexOf('end daily.json'), order.join(', '));
+});
+
+test('a failed refresh is logged once, a successful one is not', async () => {
+  const logged = [];
+  const failing = fakeRemote(dataset(2));
+  failing.fail = down(503);
+  const a = storeWith(failing, { log: (message) => logged.push(message) });
+  await a.store.ensureFresh();
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /data-store/);
+  assert.match(logged[0], /meta\.json answered 503/);
+  await a.store.ensureFresh(); // inside the backoff: no second attempt, no second line
+  assert.equal(logged.length, 1);
+
+  const fine = fakeRemote(dataset(2));
+  const b = storeWith(fine, { log: (message) => logged.push(message) });
+  await b.store.ensureFresh();
+  assert.equal(logged.length, 1, 'nothing logged for a good refresh');
+});
+
+test('a dataset that fails validation is logged with the reason and never loaded', async () => {
+  const logged = [];
+  const bad = dataset(2);
+  bad.meta.source_url = 'javascript:alert(1)';
+  const remote = fakeRemote(bad);
+  const { service, store } = storeWith(remote, { log: (message) => logged.push(message) });
+  await store.ensureFresh();
+  assert.equal(service.meta.last_date, '2026-06-05');
+  assert.match(store.status().refresh_error, /source_url/);
+  assert.match(logged[0], /source_url/);
+});
+
+test('only the known meta fields are served after a refresh, never extra text from the file', async () => {
+  const data = dataset(2);
+  data.meta.evil = '<script>alert(1)</script>';
+  const remote = fakeRemote(data);
+  const { service, store } = storeWith(remote);
+  await store.ensureFresh();
+  assert.equal(service.meta.last_date, '2026-06-07');
+  assert.equal(service.meta.evil, undefined);
+  assert.equal(service.provenance().evil, undefined);
+});
+
+test('a changes.json that is stale next to a new daily.json is refused, then accepted once it catches up', async () => {
+  const fresh = dataset(3);
+  const stale = { ...fresh, moves: dataset(0).moves };
+  const remote = fakeRemote(fresh);
+  const original = remote.fetchFn;
+  remote.fetchFn = (url, options) => {
+    if (url.endsWith('changes.json') && remote.serveStaleChanges) {
+      const text = JSON.stringify({ changes: stale.moves });
+      return { status: 200, ok: true, headers: { get: (h) => ({ etag: '"changes-old"', 'content-length': String(text.length) })[h.toLowerCase()] ?? null }, text: async () => text };
+    }
+    return original(url, options);
+  };
+  remote.serveStaleChanges = true;
+  const { service, store, clock } = storeWith(remote);
+  await store.ensureFresh();
+  assert.match(store.status().refresh_error, /changes\.json/);
+  assert.equal(service.meta.last_date, '2026-06-05', 'the old data stays');
+  remote.serveStaleChanges = false;
+  clock.advance(61_000);
+  await store.ensureFresh();
+  assert.equal(store.status().refresh_error, null);
+  assert.equal(service.meta.last_date, '2026-06-08', 'the retry fetched the full set, not a 304');
+});

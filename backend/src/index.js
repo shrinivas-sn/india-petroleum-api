@@ -3,7 +3,9 @@ import { createApp } from './app.js';
 import { remoteFromEnv } from './data-store.js';
 
 // DATA_REMOTE=off keeps the API on the data bundled with it (local runs, tests).
-const { app } = createApp({ remote: remoteFromEnv() });
+// Failed refreshes go to the server log (Vercel keeps it); the tests leave the store silent.
+const remote = remoteFromEnv();
+const { app } = createApp({ remote: remote && { ...remote, log: (line) => console.error(line) } });
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const port = process.env.PORT || 3000;

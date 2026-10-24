@@ -1,7 +1,10 @@
 import { formatChange, formatDate, formatPrice } from '../lib/format';
 import { CITIES, FUELS } from '../lib/series';
 
-/** Latest price per city and fuel, with the size and date of the last move under each figure. */
+/**
+ * Latest price per city and fuel, with the size and date of the last move under each figure.
+ * `lastMoves` is null when unknown, in which case the line under each figure is left out.
+ */
 export default function PriceBoard({ latest, lastMoves }) {
   return (
     <table className="board">
@@ -21,13 +24,15 @@ export default function PriceBoard({ latest, lastMoves }) {
           <tr key={city.slug}>
             <th scope="row">{city.name}</th>
             {FUELS.map((fuel) => {
-              const move = lastMoves[fuel.slug][city.slug];
+              const move = lastMoves?.[fuel.slug]?.[city.slug];
               return (
                 <td key={fuel.slug} className="num">
                   <span className="board__price">{formatPrice(latest[fuel.slug][city.slug])}</span>
-                  <span className="board__since">
-                    {move ? `Last change ${formatChange(move.to - move.from)} on ${formatDate(move.date)}` : 'No change on record'}
-                  </span>
+                  {lastMoves && (
+                    <span className="board__since">
+                      {move ? `Last change ${formatChange(move.to - move.from)} on ${formatDate(move.date)}` : 'No change on record'}
+                    </span>
+                  )}
                 </td>
               );
             })}

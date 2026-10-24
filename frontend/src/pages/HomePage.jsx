@@ -1,27 +1,46 @@
 import { Link } from 'react-router-dom';
 import CodeSnippet from '../components/CodeSnippet';
+import HistoryChart from '../components/HistoryChart';
 import JsonViewer from '../components/JsonViewer';
 import PriceBoard from '../components/PriceBoard';
-import PriceChart from '../components/PriceChart';
 import { PPAC_TABLE_URL } from '../content/site';
 import snapshot from '../generated/snapshot.json';
-import { formatChange, formatCount, formatDate } from '../lib/format';
-import { cityName, dayIndex, fuelName } from '../lib/series';
+import { formatChange, formatCount, formatDate, formatDateTime } from '../lib/format';
+import { useLiveData } from '../lib/live';
+import { cityName, fuelName } from '../lib/series';
 import { useOrigin } from '../lib/site';
+
+const { highlights, longest_flat: flat, examples } = snapshot;
+// The numbered points on the chart. The chart places each one when its date is inside the range shown.
+const MARKERS = highlights.map((h) => ({
+  n: h.n,
+  date: h.date,
+  series: h.moves.petrol ? 'delhi.petrol' : 'delhi.diesel',
+}));
+
+/** Says where the figures above it come from, so a build-time number is never mistaken for a live one. */
+function FreshnessNote({ state }) {
+  if (state.status === 'live') {
+    return (
+      <p className="board-note muted">
+        Live from the API: newest day {formatDate(state.latest.date)}, checked {formatDateTime(state.checkedAt)}.
+      </p>
+    );
+  }
+  if (state.status === 'offline') {
+    return (
+      <p className="board-note muted">
+        Showing data from {formatDate(state.meta.last_date)}, the last build. The live API did not answer.
+      </p>
+    );
+  }
+  return <p className="board-note muted">Data up to {formatDate(state.meta.last_date)}. Checking for newer figures.</p>;
+}
 
 export default function HomePage() {
   const origin = useOrigin();
-  const { latest, last_moves: lastMoves, chart, highlights, longest_flat: flat, meta, examples } = snapshot;
-
-  const series = [
-    { key: 'delhi.petrol', label: 'Delhi petrol', fuel: 'petrol', points: chart.series['delhi.petrol'] },
-    { key: 'delhi.diesel', label: 'Delhi diesel', fuel: 'diesel', points: chart.series['delhi.diesel'] },
-  ];
-  const markers = highlights.map((h) => ({
-    n: h.n,
-    index: dayIndex(h.date, chart.first_date),
-    series: h.moves.petrol ? 'delhi.petrol' : 'delhi.diesel',
-  }));
+  const { state } = useLiveData();
+  const { latest, lastMoves, meta } = state;
 
   return (
     <>
@@ -38,26 +57,22 @@ export default function HomePage() {
             </Link>
           </p>
         </div>
-        <PriceBoard latest={latest} lastMoves={lastMoves} />
+        <div>
+          <PriceBoard latest={latest} lastMoves={lastMoves} />
+          <FreshnessNote state={state} />
+        </div>
       </section>
 
       <section className="wrap section">
-        <h2>Delhi since {formatDate(meta.first_date)}</h2>
+        <h2>Price history</h2>
         <p className="measure">
           Prices have been revised daily since June 2017, but they have not moved every day. The longest stretch without
           a change to either Delhi price is {formatCount(flat.days)} days, from {formatDate(flat.from)} to{' '}
           {formatDate(flat.to)}, with petrol at {flat.petrol.toFixed(2)} and diesel at {flat.diesel.toFixed(2)} throughout.
         </p>
-        <PriceChart
-          series={series}
-          firstIso={chart.first_date}
-          lastIndex={chart.last_index}
-          markers={markers}
-          title="Delhi petrol and diesel prices, rupees per litre"
-          description={`Step chart of Delhi petrol and diesel retail prices from ${formatDate(meta.first_date)} to ${formatDate(
-            meta.last_date,
-          )}. Numbered points mark the largest single-day moves, listed below the chart.`}
-        />
+        <HistoryChart markers={MARKERS} />
+        <h3>Largest single-day moves in Delhi since {formatDate(snapshot.meta.first_date)}</h3>
+        <p className="muted measure">Choose All and Delhi above to see them numbered on the chart.</p>
         <ol className="moves">
           {highlights.map((h) => (
             <li key={h.n}>

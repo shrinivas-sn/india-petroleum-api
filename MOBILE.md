@@ -3,6 +3,23 @@
 Run: 2026-10-24 · profile: Vite 5 + React 18 (plain CSS), 7 routes, 4 viewports (xs 320, sm 390, md 768, land 844x390)
 Browser: puppeteer-core 25.16.0 against C:\Program Files\Google\Chrome\Application\chrome.exe (headless)
 
+## Re-run 2026-10-24, after the live-data frontend (second run of the day)
+
+What changed: a data banner under the header on every page, a range switch (3 months, 1 year, All) and a city select on the home chart, and a two-column playground with a scrolling table and folded code samples. Two new media queries (`min-width: 64rem` for the playground columns, `max-height: 36rem` for short screens).
+
+Scope: all 7 routes again, 4 viewports each (the banner is in the shared layout, so no route was left out): `/`, `/playground`, `/docs`, `/status`, `/guides`, `/guides/petrol-and-diesel-price-revisions-since-2017`, `/not-a-real-page`. Served by the project's own app at `http://127.0.0.1:3100` with the limiter off (`frontend/dist` from `npm run build`), puppeteer-core against the same Chrome. Run in two batches (five routes, then the other two) after the fix below; the probe writes one JSON file per route and viewport (28 files, 336 family cells).
+
+Result after the fix: 119 pass, 14 warn, 203 n/a, 0 fail, 0 unstable. Blockers 0, majors 0, minors 0. Every warning is `text-legibility` in the 14 to 15.99 px band (same rule and same cause as the first run: tables 15 px, code and captions 14 px); 0 nodes fail. Counted at 390 px across the 7 routes: 60 warning nodes (55 in the first run): `/docs` 37, `/playground` 8, `/` 7, the guide article 5, `/guides`, `/status` and the 404 page 1 each. `overflow-x` passes on all 28 route and viewport pairs (deltaPx 0). `tap-targets` passes on 21 measured cells with 0 below the 24 px floor and 0 below 44 px, which covers the range buttons, the city select, the retry button and the table scroll region. `form-input-zoom` passes: 4 of 4 fields on `/playground` and the 1 field on `/` (the chart's city select) at 16 px with a label and `autocomplete`.
+
+The states a visitor reaches only sometimes (stale banner, offline banner, a day newer than the build, a failed range) were driven in headless Chrome separately and are recorded in the plan Progress Log; this probe measured the normal state of each route.
+
+### [MAJOR, fixed] fixed-bar-budget @ land (844 x 390), route `/playground`
+Measured: `fixedHeightSumPx` 123 of 390 (31.5%, limit 25%), 3 offenders: the three `th` cells of the result table's header (41 px each).
+Cause: the table header was `position: sticky` inside a 20rem scroll box. The probe counts a sticky element whose rect reaches the bottom edge of the viewport, and on a 390 px screen the table starts low enough for that. The header does not pin to the viewport (it sticks inside its own scroller), so the number overstates the chrome; but the cause behind it is real: a 320 px scroll box inside a 390 px screen traps touch scrolling.
+Fix: `frontend/src/index.css`, `@media (max-height: 36rem)`: `.table-scroll--short` loses its `max-height` and its header goes back to `position: static`, so a short screen scrolls the page, not a box inside it.
+Status: fixed (re-probed 2026-10-24 with `--only fixed-bar-budget`: land 123 px (31.5%) -> 0 px (0%); xs 0, sm 123 px (14.6%, pass), md 0).
+Note for the probe: sticky cells inside an `overflow: auto` ancestor are counted as pinned chrome; excluding descendants of a scroller would make it measure what the family names.
+
 ## Run profile
 - Stack: Vite 5, React 18, react-router-dom 6, plain CSS in `frontend/src/index.css`, no Tailwind. Prerendered `frontend/dist`.
 - Serve URL: `http://127.0.0.1:3000`, the project's own Express app (`backend/src/app.js`) serving `frontend/dist` and `/v1`, started for this run with the rate limiter off (see "First run discarded").
@@ -79,6 +96,7 @@ The first probe ran against the app with its rate limiter on. The probe's page l
 | 2 | text-legibility | `frontend/src/index.css` (`code`, `.code pre`, `.code__bar`, `.chart__readout`, `.board__since`, headings) | failing 4 / 18 / 3 / 3 / 5 | 0 on every route | 2026-10-24 |
 | 3 | form-input-zoom | `frontend/src/pages/PlaygroundPage.jsx` | 4 of 4 failing | 0 failing | 2026-10-24 |
 | 4 | tap-targets | `frontend/src/index.css` (buttons, nav, status link, guide titles, skip link) | 1 to 4 below 44 px per route | 0 | 2026-10-24 |
+| 5 | fixed-bar-budget | `frontend/src/index.css` (`@media (max-height: 36rem)` on `.table-scroll--short`) | `/playground` land: 123 px, 31.5% of 390 px | 0 px, 0% (xs 0, sm 14.6%, md 0) | 2026-10-24 (second run) |
 
 ## What was not checked
 - Real devices: iOS Safari's input zoom and safe-area behaviour were not exercised; Chrome headless on emulated viewports only.

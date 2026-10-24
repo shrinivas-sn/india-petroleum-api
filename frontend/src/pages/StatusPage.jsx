@@ -4,16 +4,13 @@ import { PPAC_TABLE_URL } from '../content/site';
 import snapshot from '../generated/snapshot.json';
 import { apiGet } from '../lib/api';
 import { formatCount, formatDate, formatDateTime } from '../lib/format';
-
-// More than this many days behind means the daily job has stalled; fewer is normal around
-// weekends and holidays. Same limit as ingest/freshness.js.
-const STALE_AFTER_DAYS = 2;
+import { STALE_AFTER_DAYS, checkMeta } from '../lib/live-state';
 
 const STEPS = [
   'A GitHub Actions job downloads PPAC’s metro price file (a PDF) and reads its text.',
   'It checks that every day from 16 June 2017 is present once and that no earlier price changed. If a check fails, the job stops and nothing is published.',
-  'Otherwise it commits the new rows to the data files in the repository, and the site is redeployed with them.',
-  'The API reads those files at start-up. It does not contact PPAC when you ask.',
+  'Otherwise it commits the new rows to the data files in the repository. The job runs every three hours, so a new day is picked up the same day it appears on PPAC’s site.',
+  'The API fetches those files from the repository about every ten minutes and uses them only if they pass the same checks, so no redeploy is needed. It never contacts PPAC when you ask.',
 ];
 
 export default function StatusPage() {
@@ -27,7 +24,7 @@ export default function StatusPage() {
           apiGet('/health', { signal: controller.signal }),
           apiGet('/v1/meta', { signal: controller.signal }),
         ]);
-        setLive({ state: 'up', healthMs: health.ms, meta: meta.body.data });
+        setLive({ state: 'up', healthMs: health.ms, meta: checkMeta(meta.body) });
       } catch (error) {
         if (error.name !== 'AbortError') setLive({ state: 'down', message: error.message });
       }

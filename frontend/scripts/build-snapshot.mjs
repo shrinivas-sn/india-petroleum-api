@@ -7,33 +7,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../../backend/src/app.js';
 import { DEFAULT_DATA_DIR } from '../../backend/src/fuel-service.js';
+import { examplePaths } from './example-paths.mjs';
 import { buildSnapshot } from './snapshot.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const outFile = path.join(here, '..', 'src', 'generated', 'snapshot.json');
 
-// Fixed windows, so the documentation examples are the same on every build.
-export const EXAMPLE_PATHS = {
-  latest: '/v1/prices/latest',
-  range: '/v1/prices?city=delhi&from=2022-05-15&to=2022-05-29',
-  changes: '/v1/prices/changes?city=delhi&fuel=petrol&from=2022-05-01&to=2022-05-31',
-  cities: '/v1/cities',
-  meta: '/v1/meta',
-  health: '/health',
-  missingParam: '/v1/prices?city=delhi',
-  unknownFuel: '/v1/prices?city=delhi&fuel=kerosene&from=2022-05-20&to=2022-05-24',
-};
-
 const readJson = (name) => JSON.parse(fs.readFileSync(path.join(DEFAULT_DATA_DIR, name), 'utf8'));
 
-async function collectExamples() {
+async function collectExamples(meta) {
   const { app } = createApp({ rateLimit: false, quiet: true });
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
     const examples = {};
-    for (const [key, route] of Object.entries(EXAMPLE_PATHS)) {
+    for (const [key, route] of Object.entries(examplePaths(meta))) {
       const res = await fetch(base + route);
       examples[key] = { path: route, status: res.status, body: await res.json() };
     }
@@ -47,7 +36,7 @@ export async function writeSnapshot() {
   const days = readJson('daily.json').days;
   const moves = readJson('changes.json').changes;
   const meta = readJson('meta.json');
-  const snapshot = buildSnapshot({ days, moves, meta, examples: await collectExamples() });
+  const snapshot = buildSnapshot({ days, moves, meta, examples: await collectExamples(meta) });
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   fs.writeFileSync(outFile, `${JSON.stringify(snapshot)}\n`);
   return snapshot;

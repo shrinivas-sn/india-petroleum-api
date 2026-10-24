@@ -1,16 +1,11 @@
 // Pure functions that turn the stored fuel data (data/fuel/*.json) into the numbers the
 // portal shows. Nothing here reads files or the network: build-snapshot.mjs feeds it.
-import { CITY_SLUGS as CITIES, FUEL_SLUGS as FUELS, dayIndex, stepPoints as stepPointsOf } from '../src/lib/series.js';
+import { CITY_SLUGS as CITIES, FUEL_SLUGS as FUELS, dayIndex } from '../src/lib/series.js';
 
 export { CITIES, FUELS, dayIndex };
 
 const DAY_MS = 86400000;
 const dayMs = (iso) => Date.parse(`${iso}T00:00:00Z`);
-
-/** [[dayIndex, price], ...] with one point per price change, starting at index 0. */
-export function stepPoints(days, fuel, city) {
-  return stepPointsOf(days, (day) => day[fuel][city]);
-}
 
 /** The longest run of days on which none of the city's prices (petrol or diesel) changed. */
 export function longestFlat(days, city) {
@@ -75,13 +70,9 @@ export function revisionDaysByYear(moves) {
   return Object.fromEntries([...seen].map(([year, dates]) => [year, dates.size]));
 }
 
+// No price history is stored here: the home chart reads its rows from the API. `examples.recent` (the
+// last three months for Delhi, the API's own answer) is only the first paint and the fallback.
 export function buildSnapshot({ days, moves, meta, examples = {} }) {
-  const first = days[0].date;
-  const lastIndex = dayIndex(days[days.length - 1].date, first);
-  const series = {};
-  for (const city of ['delhi']) {
-    for (const fuel of FUELS) series[`${city}.${fuel}`] = stepPoints(days, fuel, city);
-  }
   return {
     meta: {
       first_date: meta.first_date,
@@ -96,7 +87,6 @@ export function buildSnapshot({ days, moves, meta, examples = {} }) {
     latest: days[days.length - 1],
     previous: days.length > 1 ? days[days.length - 2] : null,
     last_moves: lastMoves(moves),
-    chart: { first_date: first, last_index: lastIndex, series },
     highlights: highlights(moves),
     longest_flat: longestFlat(days, 'delhi'),
     revision_days_by_year: revisionDaysByYear(moves),

@@ -22,9 +22,21 @@ Dates are `YYYY-MM-DD`. Errors use `{ "success": false, "error": { "code", "mess
 The API serves stored JSON and never calls PPAC when a request arrives.
 
 1. `ingest/` downloads PPAC's PDF, reads its text with `pdftotext -raw`, and refuses the data if a day is missing or repeated, an earlier price changed without an approved restatement, or a price looks wrong (outside 20 to 500 rupees, or a move of more than 20 from the day before). `docs/GO-LIVE.md` says what to do when it refuses.
-2. `.github/workflows/fuel-ingest.yml` runs that and commits the new rows to `data/fuel/` (`daily.json`, `changes.json`, `meta.json`). It is manual only until the one-week download proof in `fetch-proof.yml` passes.
-3. `backend/` is an Express 5 app that reads `data/fuel/` at start. `api/index.js` exposes it as the Vercel function.
-4. `frontend/` is a React and Vite portal (home, playground, docs, three guides, status), prerendered to static HTML with a sitemap. Its figures are computed from `data/fuel/` at build time.
+2. `.github/workflows/fuel-ingest.yml` runs that every three hours and commits the new rows to `data/fuel/` (`daily.json`, `changes.json`, `meta.json`). It retries the PPAC pages and the download, treats an older PPAC file as a no-op, and keeps one rolling "ingest failed" issue.
+3. `backend/` is an Express 5 app. It starts from the `data/fuel/` files bundled with it, then fetches the newest files from this repository's raw URL at most once per `DATA_TTL_SECONDS`, validates them, and swaps them in only if they pass. On any failure it keeps the last good data and says why in `/v1/meta` (`data_source`, `checked_at`, `refresh_error`). `api/index.js` exposes it as the Vercel function.
+4. `frontend/` is a React and Vite portal (home, playground, docs, three guides, status), prerendered to static HTML with a sitemap. The prerendered page carries the figures from the build; in the browser every figure, the chart and the playground come from the API, counted back from the newest day it reports. If the API cannot be reached, the page keeps the build figures and says so; a banner on every page appears when the newest price is more than two days old.
+
+### Settings
+
+All optional; set them as environment variables on the server.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `DATA_REMOTE` | on | `off` serves only the data bundled with the deploy (local runs and tests) |
+| `DATA_BASE_URL` | this repository's `main` branch, `data/fuel` on raw.githubusercontent.com | Where the newest data files are fetched from; must be https |
+| `DATA_TTL_SECONDS` | `600` | Least time between checks for newer data on one server instance (values under 30 are ignored) |
+| `PORT` | `3000` | Port for `npm start` |
+| `SITE_URL` | Vercel's production host | Canonical origin for the sitemap and canonical tags; without one the build emits none |
 
 ## Run it
 
@@ -44,4 +56,4 @@ cd frontend && npm install && npm run build   # portal into frontend/dist, serve
 
 ## Status
 
-The fuel module is live at https://india-petroleum-api.vercel.app (deployed 24 October 2026 from the local source with the Vercel CLI). The Vercel project is not yet linked to this GitHub repository, so a push does not redeploy it; what is left, and who does it, is in `docs/GO-LIVE.md`. Monthly petroleum statistics (consumption, production and trade from data.gov.in) are not built. `docs/DECISIONS.md` records why the code looks the way it does, and `docs/DATA-NOTES.md` records how PPAC's file is read and checked.
+The fuel module is live at https://india-petroleum-api.vercel.app (deployed from the local source with the Vercel CLI). New data reaches it without a deploy, because the API reads the repository. The Vercel project is not yet linked to this GitHub repository, so a code change needs `vercel deploy --prod`; what is left, and who does it, is in `docs/GO-LIVE.md`. Monthly petroleum statistics (consumption, production and trade from data.gov.in) are not built. `docs/DECISIONS.md` records why the code looks the way it does, and `docs/DATA-NOTES.md` records how PPAC's file is read and checked.

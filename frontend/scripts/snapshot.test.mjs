@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { buildSnapshot, dayIndex, highlights, longestFlat, stepPoints, FUELS, CITIES } from './snapshot.mjs';
+import { buildSnapshot, dayIndex, highlights, longestFlat, FUELS, CITIES } from './snapshot.mjs';
+import { stepPoints as stepPointsOf } from '../src/lib/series.js';
 
 const dataDir = new URL('../../data/fuel/', import.meta.url);
 const read = (name) => JSON.parse(fs.readFileSync(fileURLToPath(new URL(name, dataDir)), 'utf8'));
@@ -14,6 +15,7 @@ const meta = read('meta.json');
 const PINNED_TO = '2026-10-23';
 const pinnedDays = days.filter((d) => d.date <= PINNED_TO);
 const pinnedMoves = moves.filter((m) => m.date <= PINNED_TO);
+const stepPoints = (rows, fuel, city) => stepPointsOf(rows, (day) => day[fuel][city]);
 
 test('step points rebuild every stored price exactly', () => {
   const first = days[0].date;
@@ -63,7 +65,7 @@ test('the snapshot carries the stored provenance and the latest day', () => {
   assert.equal(snapshot.meta.last_date, meta.last_date);
   assert.equal(snapshot.meta.sha256, meta.sha256);
   assert.equal(snapshot.latest.date, meta.last_date);
-  assert.equal(snapshot.chart.last_index, dayIndex(meta.last_date, meta.first_date));
-  assert.deepEqual(Object.keys(snapshot.chart.series).sort(), ['delhi.diesel', 'delhi.petrol']);
+  assert.equal(snapshot.chart, undefined, 'the full-history series is not stored; the chart reads the API');
+  assert.ok(JSON.stringify(snapshot).length < 150_000, 'the snapshot must not grow into a copy of the history');
   assert.equal(snapshot.revision_days_by_year['2023'], undefined, 'no revision day in 2023');
 });

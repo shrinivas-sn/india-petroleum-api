@@ -15,7 +15,7 @@ Source: Petroleum Planning & Analysis Cell (PPAC), Ministry of Petroleum and Nat
 | `GET /v1/meta` | Source file URL and SHA-256, download time, first and last date, `days_behind` |
 | `GET /health` | API name, coverage and endpoint list |
 
-Dates are `YYYY-MM-DD`. Errors use `{ "success": false, "error": { "code", "message" } }`. The rate limit is 100 requests per 15 minutes per IP address. The portal's Docs page lists every parameter and error code with real responses.
+Dates are `YYYY-MM-DD`. Errors use `{ "success": false, "error": { "code", "message" } }`. The rate limit is 100 requests per 15 minutes per IP address, counted separately on each server instance. The portal's Docs page lists every parameter and error code with real responses.
 
 ## How it works
 

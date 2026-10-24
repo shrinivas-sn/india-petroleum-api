@@ -74,6 +74,32 @@ export function readTablePosted(pdfPath) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const isTlsError = (e) => /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS/i.test(`${e?.cause?.code ?? ''} ${e?.code ?? ''} ${e?.message ?? ''}`);
 
+/**
+ * Looks for the newest daily file link on each page in turn. A network error on one page moves on to
+ * the next; if every page was unreachable the last network error is thrown. A TLS error always stops
+ * the run at once: a certificate failure is a result, never something to route around.
+ */
+export async function discoverLatest(pages = PAGES, { fetchFn = fetch, timeoutMs = 60000 } = {}) {
+  let networkError = null;
+  let seen = { status: null, bytes: null };
+  for (const page of pages) {
+    let html;
+    try {
+      const res = await fetchFn(page, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(timeoutMs) });
+      html = await res.text();
+      seen = { status: res.status, bytes: html.length };
+    } catch (e) {
+      if (isTlsError(e)) throw e;
+      networkError = e;
+      continue;
+    }
+    const picked = pickLatest(findDailyLinks(html, page));
+    if (picked) return { picked, ...seen };
+  }
+  if (networkError && seen.status === null) throw networkError;
+  return { picked: null, ...seen };
+}
+
 export async function run({ waits = [30000, 120000, 300000], log = 'proof/download-log.jsonl' } = {}) {
   const started = Date.now();
   const rec = {
@@ -87,15 +113,10 @@ export async function run({ waits = [30000, 120000, 300000], log = 'proof/downlo
   };
   let exit = 2;
   try {
-    let picked = null;
-    for (const page of PAGES) {
-      const res = await fetch(page, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(60000) });
-      const html = await res.text();
-      rec.page_status = res.status;
-      rec.page_bytes = html.length;
-      picked = pickLatest(findDailyLinks(html, page));
-      if (picked) break;
-    }
+    const found = await discoverLatest();
+    rec.page_status = found.status;
+    rec.page_bytes = found.bytes;
+    const picked = found.picked;
     if (!picked) throw new Error('NO_LINK: no DailyPriceMSHSD_Metro file link on the PPAC pages');
     rec.link_found = true;
     rec.file_url = picked.url;

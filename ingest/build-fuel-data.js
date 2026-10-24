@@ -18,7 +18,32 @@ function fail(code, message) {
   return e;
 }
 
-export function buildFuelData(parsed, { stored = [], source, approved = [], knownGaps = [] }) {
+// A published price is refused when it is outside this band or moves more than this from the day
+// before. The largest real move since 2017 is 11.75 rupees, so a refusal means look at the table,
+// not at the rule. A real shock is approved by listing its dates in ingest/approved-moves.json.
+export const PLAUSIBLE = { minPrice: 20, maxPrice: 500, maxDailyMove: 20 };
+
+export function checkPlausible(daily, approvedMoves = []) {
+  const bad = [];
+  daily.forEach((day, i) => {
+    if (approvedMoves.includes(day.date)) return;
+    for (const fuel of ['petrol', 'diesel']) {
+      for (const [city, price] of Object.entries(day[fuel])) {
+        const before = i > 0 ? daily[i - 1][fuel][city] : null;
+        const outOfBand = price < PLAUSIBLE.minPrice || price > PLAUSIBLE.maxPrice;
+        const jumped = before !== null && Math.abs(price - before) > PLAUSIBLE.maxDailyMove;
+        if (outOfBand || jumped) bad.push(`${day.date} ${fuel} ${city} ${before ?? 'n/a'} -> ${price}`);
+      }
+    }
+  });
+  if (bad.length) {
+    const shown = bad.slice(0, 5).join('; ');
+    const more = bad.length > 5 ? ` (+${bad.length - 5} more)` : '';
+    throw fail('IMPLAUSIBLE', `${shown}${more}; if PPAC really published this, list the dates in approved-moves.json`);
+  }
+}
+
+export function buildFuelData(parsed, { stored = [], source, approved = [], approvedMoves = [], knownGaps = [] }) {
   if (!parsed.posted) throw fail('POSTED', 'the text has no "Table Posted" date');
   const daily = toDays(parsed);
 
@@ -31,6 +56,8 @@ export function buildFuelData(parsed, { stored = [], source, approved = [], know
       throw fail('CONTINUITY', `${fuel} series is not continuous: ${parts.join('; ')}`);
     }
   }
+
+  checkPlausible(daily, approvedMoves);
 
   const diff = diffHistory(stored, daily, { approved });
   if (!diff.ok) {
@@ -65,9 +92,9 @@ export function readStored(dir) {
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).days : [];
 }
 
-export function runBuild({ rawText, outDir, source, approved = [], knownGaps = [] }) {
+export function runBuild({ rawText, outDir, source, approved = [], approvedMoves = [], knownGaps = [] }) {
   const stored = readStored(outDir);
-  const built = buildFuelData(parseMetroText(rawText), { stored, source, approved, knownGaps });
+  const built = buildFuelData(parseMetroText(rawText), { stored, source, approved, approvedMoves, knownGaps });
   const appended = built.diff.appended.length;
   if (stored.length > 0 && appended === 0 && built.diff.approvedChanges.length === 0) {
     return { written: false, appended, built };
@@ -107,8 +134,10 @@ function main(argv) {
   const approved = existsSync(join(root, 'ingest', 'approved-restatements.json'))
     ? JSON.parse(readFileSync(join(root, 'ingest', 'approved-restatements.json'), 'utf8'))
     : [];
+  const movesFile = join(root, 'ingest', 'approved-moves.json');
+  const approvedMoves = existsSync(movesFile) ? JSON.parse(readFileSync(movesFile, 'utf8')) : [];
   try {
-    const r = runBuild({ rawText: readFileSync(rawFile, 'utf8'), outDir, source, approved, knownGaps: loadKnownGaps() });
+    const r = runBuild({ rawText: readFileSync(rawFile, 'utf8'), outDir, source, approved, approvedMoves, knownGaps: loadKnownGaps() });
     console.log(r.written ? `wrote ${r.built.daily.length} days (${r.appended} new) to ${outDir}` : 'no change');
     return 0;
   } catch (e) {

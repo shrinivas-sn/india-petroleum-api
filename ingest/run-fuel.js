@@ -9,13 +9,13 @@ import { run as downloadDaily } from './fetch-daily.js';
 import { runBuild } from './build-fuel-data.js';
 import { loadKnownGaps } from './check-continuity.js';
 
-export function runFuel({ record, pdfSha256, rawText, outDir, approved = [], knownGaps = [] }) {
+export function runFuel({ record, pdfSha256, rawText, outDir, approved = [], approvedMoves = [], knownGaps = [] }) {
   if (record.sha256 !== pdfSha256) {
     throw new Error(`PROVENANCE: the PDF on disk (${pdfSha256}) is not the file the download record names (${record.sha256})`);
   }
   const source = { source_url: record.file_url, sha256: record.sha256, fetched_at: record.started_at_utc };
   try {
-    const r = runBuild({ rawText, outDir, source, approved, knownGaps });
+    const r = runBuild({ rawText, outDir, source, approved, approvedMoves, knownGaps });
     const { daily, meta } = r.built;
     const status = r.written ? 'written' : 'no-change';
     const summary = r.written
@@ -48,8 +48,9 @@ async function main() {
   const rawText = execFileSync('pdftotext', ['-raw', pdf, '-'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const approvedFile = join(root, 'ingest', 'approved-restatements.json');
   const approved = JSON.parse(readFileSync(approvedFile, 'utf8'));
+  const approvedMoves = JSON.parse(readFileSync(join(root, 'ingest', 'approved-moves.json'), 'utf8'));
   mkdirSync(join(root, 'work'), { recursive: true });
-  const result = runFuel({ record, pdfSha256, rawText, outDir: join(root, 'data', 'fuel'), approved, knownGaps: loadKnownGaps() });
+  const result = runFuel({ record, pdfSha256, rawText, outDir: join(root, 'data', 'fuel'), approved, approvedMoves, knownGaps: loadKnownGaps() });
   console.log(result.summary);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${result.summary}\n`);
   if (result.commitMessage) writeFileSync(join(root, 'work', 'commit-message.txt'), `${result.commitMessage}

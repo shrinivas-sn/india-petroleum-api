@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { parseMetroText } from './parse-metro.js';
 import { toDays } from './days.js';
-import { ATTRIBUTION, buildFuelData, runBuild } from './build-fuel-data.js';
+import { ATTRIBUTION, buildFuelData, checkPlausible, runBuild } from './build-fuel-data.js';
 
 const text = () =>
   readFileSync(new URL('./fixtures/raw-30-days-2022.txt', import.meta.url), 'utf8');
@@ -131,4 +131,31 @@ test('cli hashes the given pdf and records it in meta.json', () => {
   const meta = JSON.parse(readFileSync(join(out, 'meta.json'), 'utf8'));
   assert.equal(meta.sha256, createHash('sha256').update('not really a pdf').digest('hex'));
   assert.equal(meta.source_url, source.source_url);
+});
+
+test('a price ten times too large throws IMPLAUSIBLE, writes nothing, and passes once its date is approved', () => {
+  const dir = tmp();
+  const typo = text().replace(/^(7-Apr-22 )(\d+\.\d+)/m, (_, date, price) => `${date}${(Number(price) * 10).toFixed(2)}`);
+  assert.notEqual(typo, text());
+  assert.throws(
+    () => runBuild({ rawText: typo, outDir: dir, source }),
+    (e) => e.code === 'IMPLAUSIBLE' && /2022-04-07 petrol delhi/.test(e.message) && /approved-moves\.json/.test(e.message),
+  );
+  assert.deepEqual(readdirSync(dir), []);
+  const ok = runBuild({ rawText: typo, outDir: dir, source, approvedMoves: ['2022-04-07'] });
+  assert.equal(ok.written, true);
+});
+
+test('a day-over-day move above 20 rupees is refused even inside the price band', () => {
+  const days = JSON.parse(readFileSync(new URL('../data/fuel/daily.json', import.meta.url), 'utf8')).days.slice(0, 5);
+  const jumped = structuredClone(days);
+  jumped[3].diesel.mumbai = Number((jumped[2].diesel.mumbai + 21).toFixed(2));
+  assert.throws(() => checkPlausible(jumped), (e) => e.code === 'IMPLAUSIBLE' && /diesel mumbai/.test(e.message));
+  assert.throws(() => checkPlausible(jumped, [jumped[3].date]), (e) => e.message.includes(jumped[4].date), 'the move back is a move too');
+  assert.doesNotThrow(() => checkPlausible(jumped, [jumped[3].date, jumped[4].date]));
+});
+
+test('every day already stored passes the plausibility check, so the guard never blocks real history', () => {
+  const days = JSON.parse(readFileSync(new URL('../data/fuel/daily.json', import.meta.url), 'utf8')).days;
+  assert.doesNotThrow(() => checkPlausible(days));
 });

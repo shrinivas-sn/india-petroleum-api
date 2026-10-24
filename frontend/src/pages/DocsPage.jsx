@@ -48,7 +48,7 @@ export default function DocsPage() {
             Every error answer is <code>{'{ "success": false, "error": { "code": …, "message": … } }'}</code>, with the
             HTTP status shown in the table below. Unknown paths under <code>/v1</code> answer JSON, never HTML.
           </li>
-          <li>Rate limit: {RATE_LIMIT_TEXT}. The answer to the 101st request is a 429 RATE_LIMITED.</li>
+          <li>Rate limit: {RATE_LIMIT_TEXT}. Past it, that instance answers 429 RATE_LIMITED. The count is not shared between instances, so treat the limit as approximate.</li>
           <li>
             Answers come from files stored with the service, so they do not wait on PPAC. Responses are cacheable by a CDN
             for an hour; a new day of data is published with a new deployment.

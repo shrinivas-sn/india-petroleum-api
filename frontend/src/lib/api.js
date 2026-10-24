@@ -26,8 +26,10 @@ export async function apiGet(path, { signal } = {}) {
   let body = null;
   try {
     body = await response.json();
-  } catch {
-    // Not JSON: handled below as a failure.
+  } catch (error) {
+    // An abort while the body was arriving is still an abort, not a bad answer.
+    if (error.name === 'AbortError') throw error;
+    // Anything else is not JSON: handled below as a failure.
   }
   const ms = Math.round(performance.now() - started);
 

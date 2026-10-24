@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { GUIDES } from '../content/guidesData';
 import { NOT_FOUND_META, resolvePageMeta } from '../content/pageMeta';
+import { canonicalHref } from './canonical';
 
 function setMeta(attribute, key, content) {
   let tag = document.head.querySelector(`meta[${attribute}="${key}"]`);
@@ -29,9 +30,7 @@ export function usePageMeta() {
     setMeta('name', 'robots', meta === NOT_FOUND_META ? 'noindex' : 'index, follow');
 
     const canonical = document.head.querySelector('link[rel="canonical"]');
-    if (canonical?.getAttribute('href')) {
-      const origin = new URL(canonical.getAttribute('href')).origin;
-      canonical.setAttribute('href', `${origin}${pathname === '/' ? '/' : pathname.replace(/\/+$/, '')}`);
-    }
+    const href = canonical ? canonicalHref(canonical.getAttribute('href'), pathname) : null;
+    if (href) canonical.setAttribute('href', href);
   }, [pathname]);
 }

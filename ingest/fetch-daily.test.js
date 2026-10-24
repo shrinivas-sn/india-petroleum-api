@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { findDailyLinks, pickLatest, downloadComplete } from './fetch-daily.js';
+import { findDailyLinks, pickLatest, downloadComplete, discoverLatest } from './fetch-daily.js';
 
 const fx = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -59,4 +59,41 @@ test('downloadComplete accepts a full body and returns bytes and sha256', async 
   assert.equal(r.bytes, 2048);
   assert.equal(r.sha256.length, 64);
   s.close();
+});
+
+test('discoverLatest tries the next page when the first one cannot be reached', async () => {
+  const html = '<a href="https://ppac.gov.in/download.php?file=importantnews/1792653592_PP_9_a_DailyPriceMSHSD_Metro_22.10.2026.pdf">x</a>';
+  const calls = [];
+  const fetchFn = async (url) => {
+    calls.push(url);
+    if (calls.length === 1) throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } });
+    return { status: 200, text: async () => html };
+  };
+  const found = await discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn });
+  assert.equal(calls.length, 2);
+  assert.match(found.picked.url, /Metro_22\.10\.2026\.pdf$/);
+  assert.equal(found.status, 200);
+});
+
+test('discoverLatest reports the network error when no page can be reached', async () => {
+  const fetchFn = async () => {
+    throw Object.assign(new Error('fetch failed'), { cause: { code: 'ETIMEDOUT' } });
+  };
+  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), /fetch failed/);
+});
+
+test('discoverLatest returns no link, not an error, when pages answer without one', async () => {
+  const fetchFn = async () => ({ status: 200, text: async () => '<p>nothing here</p>' });
+  const found = await discoverLatest(['https://a.test/'], { fetchFn });
+  assert.equal(found.picked, null);
+});
+
+test('discoverLatest never works around a TLS failure', async () => {
+  const calls = [];
+  const fetchFn = async (url) => {
+    calls.push(url);
+    throw Object.assign(new Error('fetch failed'), { cause: { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' } });
+  };
+  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }));
+  assert.equal(calls.length, 1, 'a certificate failure stops the run, it does not try another page');
 });

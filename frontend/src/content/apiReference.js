@@ -84,6 +84,6 @@ export const ERRORS = [
   ['404', 'UNKNOWN_CITY', 'city is not one of the four slugs. valid_values lists them.'],
   ['404', 'UNKNOWN_FUEL', 'fuel is not petrol or diesel. valid_values lists them.'],
   ['404', 'NOT_FOUND', 'No such route.'],
-  ['429', 'RATE_LIMITED', 'More than 100 requests from one IP address in 15 minutes.'],
+  ['429', 'RATE_LIMITED', 'More than 100 requests from one IP address in 15 minutes on one server instance.'],
   ['500', 'INTERNAL_ERROR', 'An unexpected failure on the server.'],
 ];

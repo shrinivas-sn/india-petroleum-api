@@ -1,0 +1,53 @@
+{
+  "manifest_version": 1,
+  "slug": "india-petroleum",
+  "name": "India Petroleum API",
+  "one_liner": "Free, keyless REST API for official daily petrol and diesel retail prices in Delhi, Mumbai, Chennai and Kolkata since 16 June 2017, from the PPAC metro price table.",
+  "category": "Energy",
+  "repo": "https://github.com/shrinivas-sn/india-petroleum-api",
+  "source": {
+    "name": "Petroleum Planning & Analysis Cell (PPAC), Ministry of Petroleum and Natural Gas — RSP of Petrol and Diesel in Metro Cities since 16.6.2017 (daily PDF)",
+    "url": "https://ppac.gov.in/retail-selling-price-rsp-of-petrol-diesel-and-domestic-lpg/rsp-of-petrol-and-diesel-in-metro-cities-since-16-6-2017",
+    "license": "PPAC terms: material may be reproduced free of charge if reproduced accurately, not in a misleading context, and with the source prominently acknowledged (https://ppac.gov.in/terms-conditions)."
+  },
+  "not_provided": [
+    "prices for cities other than Delhi, Mumbai, Chennai and Kolkata",
+    "fuels other than petrol and diesel (no LPG, CNG, ATF or kerosene)",
+    "state-wise prices, taxes, VAT, excise or dealer commission breakdowns",
+    "prices before 16 June 2017, when daily pricing started",
+    "monthly petroleum consumption, production and trade statistics (planned, not live)",
+    "a guarantee of the pump price on a date (PPAC says a daily change applies from 6:00 AM)"
+  ],
+  "stack": {
+    "runtime": "node>=22",
+    "backend": "express 5, stored JSON read at start, no database",
+    "frontend": "react+vite, prerendered",
+    "ingestion": "GitHub Actions downloads the PPAC PDF, parses it with pdftotext -raw and commits data/fuel/*.json",
+    "dataset": {
+      "status": "real",
+      "source_pdf_url": "https://ppac.gov.in/uploads/page-images/1792732979_PP_9_a_DailyPriceMSHSD_Metro_23.10.2026.pdf",
+      "source_posted_date": "2026-10-23",
+      "first_date": "2017-06-16",
+      "days": 3417,
+      "cities": 4,
+      "fuels": 2
+    }
+  },
+  "deploy": {
+    "portal_url": null,
+    "api_base_url": null,
+    "health_path": "/health",
+    "warmup_path": "/health"
+  },
+  "routes": [],
+  "submission": {
+    "terms": [
+      "petrol price India",
+      "diesel price India",
+      "fuel prices",
+      "PPAC",
+      "petroleum"
+    ],
+    "targets": []
+  }
+}

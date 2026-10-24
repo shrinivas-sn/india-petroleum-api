@@ -60,6 +60,20 @@
       "PPAC",
       "petroleum"
     ],
-    "targets": []
+    "targets": [
+      {
+        "repo": "public-apis/public-apis",
+        "pr": null,
+        "row": {
+          "title": "India Fuel Prices",
+          "url": "https://india-petroleum-api.vercel.app/docs",
+          "description": "Daily petrol and diesel prices for Delhi, Mumbai, Chennai and Kolkata since 2017, from PPAC",
+          "category": "Transportation",
+          "auth": "No",
+          "https": "Yes",
+          "cors": "Yes"
+        }
+      }
+    ]
   }
 }

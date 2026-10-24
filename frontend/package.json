@@ -1,0 +1,24 @@
+{
+  "name": "india-petroleum-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "snapshot": "node scripts/build-snapshot.mjs",
+    "dev": "node scripts/build-snapshot.mjs && vite",
+    "build": "node scripts/build-snapshot.mjs && vite build && node scripts/prerender.mjs",
+    "preview": "vite preview",
+    "verify:seo": "node scripts/verify-seo.mjs --dist dist",
+    "test": "node --test scripts/*.test.mjs src/lib/*.test.mjs src/content/*.test.mjs",
+    "test:build": "node --test scripts/after-build/*.test.mjs"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}

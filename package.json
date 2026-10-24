@@ -7,7 +7,10 @@
   "scripts": {
     "test": "node --test \"ingest/**/*.test.js\" \"backend/test/**/*.test.js\"",
     "test:backend": "node --test \"backend/test/**/*.test.js\"",
-    "start": "node backend/src/index.js"
+    "start": "node backend/src/index.js",
+    "build": "cd frontend && npm ci --no-audit --no-fund && npm run build",
+    "test:frontend": "npm --prefix frontend test",
+    "verify": "npm test && npm run test:frontend && npm run build && npm --prefix frontend run test:build && npm --prefix frontend run verify:seo"
   },
   "engines": {
     "node": ">=22"

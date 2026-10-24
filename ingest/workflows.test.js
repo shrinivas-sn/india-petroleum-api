@@ -1,5 +1,6 @@
-// A workflow that runs the project's tests needs the project's dependencies first. The backend
-// tests import express, which a clean runner does not have until `npm ci` has run.
+// A job that runs the project's npm scripts needs the project's dependencies first. The backend
+// tests import express, which a clean runner does not have until `npm ci` has run. The check is
+// per job (a later job does not inherit an earlier job's install) and sees `run: |` blocks too.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -7,17 +8,62 @@ import { readdirSync, readFileSync } from 'node:fs';
 const dir = new URL('../.github/workflows/', import.meta.url);
 const workflows = readdirSync(dir).filter((f) => f.endsWith('.yml'));
 
+export function jobsMissingInstall(text) {
+  const start = text.search(/^jobs:\s*$/m);
+  if (start === -1) return [];
+  const jobs = [];
+  let current = null;
+  for (const line of text.slice(start).split('\n').slice(1)) {
+    const header = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (header) {
+      current = { name: header[1], lines: [] };
+      jobs.push(current);
+    } else if (current) {
+      current.lines.push(line);
+    }
+  }
+  const code = (l) => !/^\s*#/.test(l);
+  return jobs
+    .filter((job) => {
+      const npm = job.lines.findIndex((l) => code(l) && /\bnpm (test|run)\b/.test(l));
+      if (npm === -1) return false;
+      const install = job.lines.findIndex((l) => code(l) && /\bnpm ci\b/.test(l));
+      return install === -1 || install > npm;
+    })
+    .map((job) => job.name);
+}
+
+test('the checker names a job that runs npm test without an earlier npm ci', () => {
+  const yaml = [
+    'jobs:',
+    '  good:',
+    '    steps:',
+    '      - run: npm ci',
+    '      - run: npm test',
+    '  late-install:',
+    '    steps:',
+    '      - run: npm test',
+    '      - run: npm ci',
+    '  inherits-nothing:',
+    '    steps:',
+    '      - run: |',
+    '          echo start',
+    '          npm run build',
+    '  only-a-comment:',
+    '    steps:',
+    '      # npm test happens elsewhere',
+    '      - run: node ingest/freshness.js',
+  ].join('\n');
+  assert.deepEqual(jobsMissingInstall(yaml), ['late-install', 'inherits-nothing']);
+});
+
 test('there are workflows to check', () => {
-  assert.ok(workflows.length >= 2);
+  assert.ok(workflows.length >= 3);
 });
 
 for (const name of workflows) {
-  test(`${name} installs dependencies before it runs npm`, () => {
-    const lines = readFileSync(new URL(name, dir), 'utf8').split('\n');
-    const firstNpm = lines.findIndex((l) => /^\s*(-\s*)?run:\s*npm (test|run)\b/.test(l));
-    if (firstNpm === -1) return;
-    const install = lines.findIndex((l) => /^\s*(-\s*)?run:\s*npm ci\b/.test(l));
-    assert.ok(install !== -1 && install < firstNpm, `${name}: line ${firstNpm + 1} runs npm before any "npm ci"`);
+  test(`${name}: every job that runs npm installs first`, () => {
+    assert.deepEqual(jobsMissingInstall(readFileSync(new URL(name, dir), 'utf8')), []);
   });
 }
 

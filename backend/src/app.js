@@ -39,7 +39,7 @@ export function createApp(options = {}) {
         handler: (req, res) =>
           res.status(429).json({
             success: false,
-            error: { code: 'RATE_LIMITED', message: 'Too many requests. Rate limit is 100 requests per 15 minutes.' },
+            error: { code: 'RATE_LIMITED', message: 'Too many requests. The limit is 100 requests per 15 minutes per IP address on each server instance.' },
           }),
       }),
     );
@@ -66,7 +66,7 @@ export function createApp(options = {}) {
         'Free, keyless REST API for official daily retail petrol and diesel prices in Delhi, Mumbai, Chennai and Kolkata since 16 June 2017, from PPAC.',
       coverage: fuel.coverage(),
       endpoints: ENDPOINTS,
-      rate_limit: '100 requests per 15 minutes per IP',
+      rate_limit: '100 requests per 15 minutes per IP address, counted on each server instance',
       status: 'operational',
     });
 

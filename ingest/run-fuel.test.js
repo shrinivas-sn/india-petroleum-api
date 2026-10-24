@@ -74,3 +74,16 @@ test('a first run lists the whole range in the commit message', () => {
   const r = runFuel(job());
   assert.equal(r.commitMessage, 'ingest(fuel): 2022-03-09..2022-04-07, 30 day(s), posted 2026-10-22');
 });
+
+test('a published shock exits 3 and lists its dates, and goes through once those dates are in approvedMoves', () => {
+  const typo = text().replace(/^(7-Apr-22 )(\d+\.\d+)/m, (_, date, price) => `${date}${(Number(price) * 10).toFixed(2)}`);
+  const j = job();
+  const refused = runFuel({ ...j, rawText: typo });
+  assert.equal(refused.code, 3);
+  assert.match(refused.report, /IMPLAUSIBLE/);
+  assert.match(refused.report, /dates: 2022-04-07/);
+  assert.deepEqual(readdirSync(j.outDir), []);
+  const ok = runFuel({ ...j, rawText: typo, approvedMoves: ['2022-04-07'] });
+  assert.equal(ok.code, 0);
+  assert.equal(ok.status, 'written');
+});

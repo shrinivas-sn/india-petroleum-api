@@ -155,7 +155,25 @@ test('a day-over-day move above 20 rupees is refused even inside the price band'
   assert.doesNotThrow(() => checkPlausible(jumped, [jumped[3].date, jumped[4].date]));
 });
 
-test('every day already stored passes the plausibility check, so the guard never blocks real history', () => {
+const approvedMoves = () => JSON.parse(readFileSync(new URL('./approved-moves.json', import.meta.url), 'utf8'));
+
+test('every stored day passes the plausibility check with the approved dates, so an approved shock can still be committed', () => {
   const days = JSON.parse(readFileSync(new URL('../data/fuel/daily.json', import.meta.url), 'utf8')).days;
-  assert.doesNotThrow(() => checkPlausible(days));
+  assert.doesNotThrow(() => checkPlausible(days, approvedMoves()));
+});
+
+test('approved-moves.json lists real calendar dates and nothing else', () => {
+  const list = approvedMoves();
+  assert.ok(Array.isArray(list));
+  for (const date of list) {
+    assert.match(date, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10), date);
+  }
+});
+
+test('the refusal message lists every affected date, so a spike and its reversion are both visible', () => {
+  const days = JSON.parse(readFileSync(new URL('../data/fuel/daily.json', import.meta.url), 'utf8')).days.slice(0, 6);
+  const spiked = structuredClone(days);
+  for (const fuel of ['petrol', 'diesel']) for (const city of Object.keys(spiked[3][fuel])) spiked[3][fuel][city] += 30;
+  assert.throws(() => checkPlausible(spiked), (e) => e.message.includes(spiked[3].date) && e.message.includes(spiked[4].date) && /dates: /.test(e.message));
 });

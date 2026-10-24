@@ -212,6 +212,7 @@ test('the rate limit answers 429 in the error envelope', async () => {
     const third = await get('/v1/cities', url);
     assert.equal(third.status, 429);
     assert.equal(third.body.error.code, 'RATE_LIMITED');
+    assert.match(third.body.error.message, /each server instance/, 'the limit is per instance on serverless, and the message must not claim more');
     assert.equal(third.headers.get('ratelimit'), null);
   } finally {
     await new Promise((r) => s.close(r));
@@ -220,4 +221,9 @@ test('the rate limit answers 429 in the error envelope', async () => {
 
 test('the service refuses a data folder that is missing', () => {
   assert.throws(() => new FuelService({ dataDir: '/definitely/not/here' }), /daily\.json/);
+});
+
+test('/health states the rate limit with the same per-instance caveat as the docs', async () => {
+  const { body } = await get('/health');
+  assert.match(body.data.rate_limit, /each server instance/);
 });

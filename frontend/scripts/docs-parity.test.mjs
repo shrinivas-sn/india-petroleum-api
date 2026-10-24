@@ -35,6 +35,14 @@ test('every error code the backend raises is in the table', () => {
   }
 });
 
+test('the rate limit is described the same way in the backend, its 429 answer and the docs', () => {
+  const site = fs.readFileSync(fileURLToPath(new URL('../src/content/site.js', import.meta.url)), 'utf8');
+  for (const [name, text] of [['backend/src/app.js', appSource], ['frontend/src/content/site.js', site]]) {
+    assert.match(text, /100 requests per 15 minutes/, name);
+    assert.match(text, /each server instance/, `${name} must say the count is per instance`);
+  }
+});
+
 test('the documented limits match the backend', () => {
   assert.match(serviceSource, /MAX_RANGE_DAYS = 3660/);
   assert.match(appSource, /limit: options.rateLimitMax \?\? 100/);

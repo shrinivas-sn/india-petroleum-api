@@ -9,6 +9,15 @@ What is left before the fuel module is public, in order. The generic deploy step
 3. **Search Console.** Add the property, download the `google<token>.html` file into `frontend/public/` and commit it. Without it the `gsc-file` check fails. Submit `sitemap.xml` under Indexing > Sitemaps.
 4. **After the first deploy:** `node api-projects/pipeline/deploy/record-live.js --project api-projects/projects/india-petroleum-api --portal <url> --api <url>`, then fill `routes` in `api.json` (the list is in `docs/DECISIONS.md`, "routes stay empty until go-live"), run `run-checks.js --stage production` against the live URL, and run `prod-site-auditor` on it.
 
+## When the daily job refuses the data
+
+The job fails closed: nothing is committed, the PDF and a failure report are kept as a run artifact for seven days. The first line of the report names the check:
+
+- `CONTINUITY`: a day is missing, repeated or incomplete in PPAC's table. Look at the PDF; if PPAC really skipped a day, add `{ "date": "YYYY-MM-DD", "reason": "..." }` (and `"fuel"` if only one fuel is missing) to `ingest/known-gaps.json`.
+- `RESTATEMENT`: PPAC changed a price it had already published. Check the PDF, then list the date in `ingest/approved-restatements.json`.
+- `IMPLAUSIBLE`: a price outside 20 to 500 rupees, or a move of more than 20 from the day before (the largest real one since 2017 is 12.48). Most often a typo in PPAC's table: wait for the correction. If the figures are real, list every date the message names in `ingest/approved-moves.json`; a spike and its reversion are two dates. Approving a date waives the check for all eight prices that day.
+- Anything else, or a download error: the next run retries; two days without new data trip the freshness alarm.
+
 ## Copy that is only true once the schedule is on
 
 - Status page, "How the data gets here": says a GitHub Actions job downloads, checks and commits the data and the site is redeployed. True only after step 1 and after Vercel is connected to the repo. Until then the data is refreshed by running `fuel-ingest` by hand.

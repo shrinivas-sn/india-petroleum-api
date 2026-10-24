@@ -76,11 +76,14 @@ const isTlsError = (e) => /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS/i.test(`${e
 
 /**
  * Looks for the newest daily file link on each page in turn. A network error on one page moves on to
- * the next; if every page was unreachable the last network error is thrown. A TLS error always stops
- * the run at once: a certificate failure is a result, never something to route around.
+ * the next, and is returned in `pageErrors` so the download record shows it. If no page gave a link
+ * and any page was unreachable, the first network error is thrown: "unreachable" is not "PPAC removed
+ * the link". A TLS error always stops the run at once: a certificate failure is a result, never
+ * something to route around.
  */
 export async function discoverLatest(pages = PAGES, { fetchFn = fetch, timeoutMs = 60000 } = {}) {
-  let networkError = null;
+  const pageErrors = [];
+  let firstError = null;
   let seen = { status: null, bytes: null };
   for (const page of pages) {
     let html;
@@ -90,14 +93,15 @@ export async function discoverLatest(pages = PAGES, { fetchFn = fetch, timeoutMs
       seen = { status: res.status, bytes: html.length };
     } catch (e) {
       if (isTlsError(e)) throw e;
-      networkError = e;
+      firstError ??= e;
+      pageErrors.push(`${page}: ${e.message}${e.cause?.code ? ` (${e.cause.code})` : ''}`);
       continue;
     }
     const picked = pickLatest(findDailyLinks(html, page));
-    if (picked) return { picked, ...seen };
+    if (picked) return { picked, ...seen, pageErrors };
   }
-  if (networkError && seen.status === null) throw networkError;
-  return { picked: null, ...seen };
+  if (firstError) throw firstError;
+  return { picked: null, ...seen, pageErrors };
 }
 
 export async function run({ waits = [30000, 120000, 300000], log = 'proof/download-log.jsonl' } = {}) {
@@ -109,13 +113,14 @@ export async function run({ waits = [30000, 120000, 300000], log = 'proof/downlo
     page_status: null, page_bytes: null, link_found: false, file_url: null, copies_found: 0,
     download_status: null, content_length: null, bytes_received: null, complete: false,
     sha256: null, pdf_pages: null, table_posted: null, tls_verified: true, attempts: 0,
-    seconds_total: 0, error: null,
+    seconds_total: 0, error: null, page_errors: [],
   };
   let exit = 2;
   try {
     const found = await discoverLatest();
     rec.page_status = found.status;
     rec.page_bytes = found.bytes;
+    rec.page_errors = found.pageErrors;
     const picked = found.picked;
     if (!picked) throw new Error('NO_LINK: no DailyPriceMSHSD_Metro file link on the PPAC pages');
     rec.link_found = true;

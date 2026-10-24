@@ -40,3 +40,15 @@ test('manual runs are ignored', () => {
   const s = summarize([rec(1, 1, { trigger: 'manual' })]);
   assert.equal(s.days.length, 0);
 });
+
+test('a page that failed but was covered by the fallback still counts as a pass and is listed in the day\'s errors', () => {
+  const recs = [rec(1, 1, { page_errors: ['https://ppac.gov.in/retail: fetch failed (ECONNRESET)'] }), rec(1, 8)];
+  const s = summarize(recs);
+  assert.equal(s.days[0].status, 'pass');
+  assert.match(s.days[0].errors.join(' '), /ECONNRESET/);
+});
+
+test('records written before page_errors existed still summarise', () => {
+  const s = summarize([rec(1, 1)]);
+  assert.deepEqual(s.days[0].errors, []);
+});

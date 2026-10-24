@@ -97,3 +97,41 @@ test('discoverLatest never works around a TLS failure', async () => {
   await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }));
   assert.equal(calls.length, 1, 'a certificate failure stops the run, it does not try another page');
 });
+
+const LINK_PAGE = '<a href="https://ppac.gov.in/download.php?file=importantnews/1792653592_PP_9_a_DailyPriceMSHSD_Metro_22.10.2026.pdf">x</a>';
+const reset = (code) => Object.assign(new Error('fetch failed'), { cause: { code } });
+
+test('discoverLatest reports a failed primary page even when the fallback page supplied the link', async () => {
+  let n = 0;
+  const fetchFn = async () => {
+    n += 1;
+    if (n === 1) throw reset('ECONNRESET');
+    return { status: 200, text: async () => LINK_PAGE };
+  };
+  const found = await discoverLatest(['https://primary.test/', 'https://fallback.test/'], { fetchFn });
+  assert.ok(found.picked);
+  assert.equal(found.pageErrors.length, 1);
+  assert.match(found.pageErrors[0], /primary\.test.*fetch failed.*ECONNRESET/);
+});
+
+test('discoverLatest names a network failure, not a missing link, when one page was unreachable and the other had no link', async () => {
+  for (const order of ['unreachable-first', 'unreachable-second']) {
+    let n = 0;
+    const fetchFn = async () => {
+      n += 1;
+      const unreachable = order === 'unreachable-first' ? n === 1 : n === 2;
+      if (unreachable) throw reset('ETIMEDOUT');
+      return { status: 200, text: async () => '<p>nothing</p>' };
+    };
+    await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), /fetch failed/, order);
+  }
+});
+
+test('discoverLatest keeps the first network error when every page fails', async () => {
+  let n = 0;
+  const fetchFn = async () => {
+    n += 1;
+    throw Object.assign(new Error(`fetch failed ${n}`), { cause: { code: 'ECONNRESET' } });
+  };
+  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), /fetch failed 1/);
+});

@@ -19,7 +19,7 @@ function fail(code, message) {
 }
 
 // A published price is refused when it is outside this band or moves more than this from the day
-// before. The largest real move since 2017 is 11.75 rupees, so a refusal means look at the table,
+// before. The largest real move since 2017 is 12.48 rupees (Mumbai diesel, 2021-11-04), so a refusal means look at the table,
 // not at the rule. A real shock is approved by listing its dates in ingest/approved-moves.json.
 export const PLAUSIBLE = { minPrice: 20, maxPrice: 500, maxDailyMove: 20 };
 
@@ -39,7 +39,8 @@ export function checkPlausible(daily, approvedMoves = []) {
   if (bad.length) {
     const shown = bad.slice(0, 5).join('; ');
     const more = bad.length > 5 ? ` (+${bad.length - 5} more)` : '';
-    throw fail('IMPLAUSIBLE', `${shown}${more}; if PPAC really published this, list the dates in approved-moves.json`);
+    const dates = [...new Set(bad.map((line) => line.slice(0, 10)))].join(', ');
+    throw fail('IMPLAUSIBLE', `${shown}${more}; dates: ${dates}; if PPAC really published this, list every one of those dates in approved-moves.json (a spike and its reversion are two dates)`);
   }
 }
 

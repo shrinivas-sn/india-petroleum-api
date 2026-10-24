@@ -33,7 +33,7 @@ export function summarize(records) {
     days.push({
       date: d, runs: runs.length, ok: good.length, failed: runs.length - good.length,
       status: !runs.length ? 'no run' : good.length ? 'pass' : 'fail',
-      first_seen_utc: seen, errors: runs.map((r) => r.error).filter(Boolean),
+      first_seen_utc: seen, errors: runs.flatMap((r) => [r.error, ...(r.page_errors ?? [])]).filter(Boolean),
     });
   }
   let streak = 0, best = 0;

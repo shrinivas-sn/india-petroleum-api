@@ -21,7 +21,7 @@ Dates are `YYYY-MM-DD`. Errors use `{ "success": false, "error": { "code", "mess
 
 The API serves stored JSON and never calls PPAC when a request arrives.
 
-1. `ingest/` downloads PPAC's PDF, reads its text with `pdftotext -raw`, and refuses the data if a day is missing, repeated, or an earlier price changed without an approved restatement.
+1. `ingest/` downloads PPAC's PDF, reads its text with `pdftotext -raw`, and refuses the data if a day is missing or repeated, an earlier price changed without an approved restatement, or a price looks wrong (outside 20 to 500 rupees, or a move of more than 20 from the day before). `docs/GO-LIVE.md` says what to do when it refuses.
 2. `.github/workflows/fuel-ingest.yml` runs that and commits the new rows to `data/fuel/` (`daily.json`, `changes.json`, `meta.json`). It is manual only until the one-week download proof in `fetch-proof.yml` passes.
 3. `backend/` is an Express 5 app that reads `data/fuel/` at start. `api/index.js` exposes it as the Vercel function.
 4. `frontend/` is a React and Vite portal (home, playground, docs, three guides, status), prerendered to static HTML with a sitemap. Its figures are computed from `data/fuel/` at build time.
@@ -40,7 +40,7 @@ cd frontend && npm install && npm run build   # portal into frontend/dist, serve
 
 - `npm test`: the ingest and backend tests.
 - `npm run test:frontend`: the frontend tests, including a check that every number the guides quote matches the data.
-- `npm run verify`: all of the above, the production build, the built-site tests and the SEO check.
+- `npm run verify`: all of the above, the production build, the built-site tests and the SEO check. `.github/workflows/ci.yml` runs it on every push to main and every pull request.
 
 ## Status
 

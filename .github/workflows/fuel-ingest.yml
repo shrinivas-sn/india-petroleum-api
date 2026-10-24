@@ -1,9 +1,13 @@
 # Daily fuel ingestion: download the PPAC metro PDF, check it, commit data/fuel/ only when
-# something truly changed. Manual only until the Phase 1 proof week gives the posting window
-# (docs/GO-LIVE.md); the cron is added then and fetch-proof.yml is retired in the same commit.
+# something truly changed. Runs every three hours because PPAC's posting time is irregular; a run is
+# idempotent (no new day means no commit) and costs a few seconds. The schedule is also the outer
+# retry for a failed download. A failed or stale run opens one rolling issue; a good run closes it.
+# What to do when a check refuses the data is in docs/GO-LIVE.md.
 name: fuel-ingest
 
 on:
+  schedule:
+    - cron: '20 */3 * * *'
   workflow_dispatch: {}
 
 permissions:
@@ -61,12 +65,16 @@ jobs:
           git add data/fuel
           if git diff --cached --quiet; then
             echo "No data change."
-          else
-            git commit -m "$(cat work/commit-message.txt)"
+            exit 0
           fi
-          git add proof/download-log.jsonl
-          if ! git diff --cached --quiet; then git commit -m "proof: run ${GITHUB_RUN_ID}"; fi
-          git pull --rebase -q && git push
+          git commit -m "$(cat work/commit-message.txt)"
+          # The download log line of this run is not committed (eight runs a day would only add noise).
+          git restore proof/download-log.jsonl 2>/dev/null || true
+          for attempt in 1 2 3; do
+            if git pull --rebase -q && git push; then break; fi
+            if [ "$attempt" = 3 ]; then echo "push failed after 3 attempts"; exit 1; fi
+            sleep $((attempt * 5))
+          done
 
       - name: Fail the job when ingestion failed
         if: steps.ingest.outcome == 'failure'
@@ -89,3 +97,32 @@ jobs:
 
       - name: Newest stored day is at most two IST days old
         run: node ingest/freshness.js | tee -a "$GITHUB_STEP_SUMMARY"
+
+  notify:
+    needs: [ingest, freshness]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Open, update or close the rolling failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INGEST: ${{ needs.ingest.result }}
+          FRESHNESS: ${{ needs.freshness.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          number=$(gh issue list --state open --search "Daily fuel ingestion is failing in:title" --json number,title --jq '[.[] | select(.title == "Daily fuel ingestion is failing")][0].number // empty')
+          if [ "$INGEST" = "success" ] && [ "$FRESHNESS" != "failure" ]; then
+            if [ -n "$number" ]; then gh issue close "$number" --comment "Recovered in $RUN_URL"; fi
+            exit 0
+          fi
+          if [ "$INGEST" != "failure" ] && [ "$FRESHNESS" != "failure" ]; then exit 0; fi
+          body="The latest run did not end well (ingest: $INGEST, freshness: $FRESHNESS). Run: $RUN_URL. The site keeps serving the last prices that were fetched; its status page shows how old they are. What to do for each kind of refusal is in docs/GO-LIVE.md. This issue closes itself when a run succeeds."
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --body "$body"
+          else
+            gh issue create --title "Daily fuel ingestion is failing" --body "$body"
+          fi

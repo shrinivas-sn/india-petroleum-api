@@ -74,3 +74,37 @@ test('workflows do not point at a file that is not in the repository', () => {
     }
   }
 });
+
+// The daily data job: what makes it dependable is in the workflow text, so a careless edit is caught here.
+const ingestYml = () => readFileSync(new URL('fuel-ingest.yml', dir), 'utf8');
+
+test('fuel-ingest runs on a schedule several times a day and can still be started by hand', () => {
+  const yml = ingestYml();
+  assert.match(yml, /^on:\n {2}schedule:\n {4}- cron: '[0-9]+ \*\/[0-9]+ \* \* \*'/m, 'a cron with an hourly step');
+  assert.match(yml, /workflow_dispatch/);
+});
+
+test('fuel-ingest never overlaps itself', () => {
+  assert.match(ingestYml(), /concurrency:\n {2}group: fuel-ingest\n {2}cancel-in-progress: false/);
+});
+
+test('fetch-proof has no schedule, so two jobs do not both ask PPAC for the same file', () => {
+  assert.doesNotMatch(readFileSync(new URL('fetch-proof.yml', dir), 'utf8'), /^\s*schedule:/m);
+});
+
+test('the commit step retries pull and push, so a concurrent push does not lose a day', () => {
+  const yml = ingestYml();
+  assert.match(yml, /for attempt in 1 2 3/);
+  assert.match(yml, /git pull --rebase/);
+  assert.match(yml, /git push/);
+});
+
+test('a failed or stale run opens one rolling issue and a good run closes it', () => {
+  const yml = ingestYml();
+  assert.match(yml, /issues: write/);
+  assert.match(yml, /notify:/);
+  assert.match(yml, /gh issue create/);
+  assert.match(yml, /gh issue close/);
+  assert.match(yml, /gh issue edit/);
+  assert.match(yml, /needs: \[ingest, freshness\]/);
+});

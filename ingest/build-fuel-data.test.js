@@ -181,10 +181,10 @@ test('the refusal message lists every affected date, so a spike and its reversio
 test('a stored day that vanished from the table is refused, and the message does not suggest an approval that cannot clear it', () => {
   const dir = tmp();
   runBuild({ rawText: text(), outDir: dir, source });
-  const shorter = text().split('\n').filter((l) => !l.startsWith('7-Apr-22')).join('\n');
+  const shorter = text().split('\n').filter((l) => !/^(9|10)-Mar-22/.test(l)).join('\n');
   assert.throws(
-    () => runBuild({ rawText: shorter, outDir: dir, source, approved: ['2022-04-07'] }),
-    (e) => e.code === 'RESTATEMENT' && /vanished/.test(e.message) && /2022-04-07/.test(e.message) && !/approve in approved-restatements/.test(e.message),
+    () => runBuild({ rawText: shorter, outDir: dir, source, approved: ['2022-03-09', '2022-03-10'] }),
+    (e) => e.code === 'RESTATEMENT' && /vanished/.test(e.message) && /2022-03-09/.test(e.message) && !/approve in approved-restatements/.test(e.message),
   );
 });
 
@@ -196,3 +196,34 @@ test('a changed price still points at approved-restatements.json', () => {
     (e) => e.code === 'RESTATEMENT' && /changed/.test(e.message) && /approve in approved-restatements\.json/.test(e.message),
   );
 });
+
+// A source older than what is stored is not an error: PPAC can serve yesterday's file, or a cache can.
+const withoutLastDay = () => text().split('\n').filter((l) => !l.startsWith('7-Apr-22')).join('\n');
+
+test('a source file that ends earlier than the stored data, and agrees with it, is a no-op with a notice', () => {
+  const dir = tmp();
+  runBuild({ rawText: text(), outDir: dir, source });
+  const before = readFileSync(join(dir, 'daily.json'), 'utf8');
+  const metaBefore = readFileSync(join(dir, 'meta.json'), 'utf8');
+  const r = runBuild({ rawText: withoutLastDay(), outDir: dir, source: { ...source, fetched_at: '2026-10-23T10:00:00Z' } });
+  assert.equal(r.written, false);
+  assert.equal(r.stale.sourceLast, '2022-04-06');
+  assert.equal(r.stale.storedLast, '2022-04-07');
+  assert.equal(readFileSync(join(dir, 'daily.json'), 'utf8'), before);
+  assert.equal(readFileSync(join(dir, 'meta.json'), 'utf8'), metaBefore);
+});
+
+test('an older source that disagrees with a stored price is still a RESTATEMENT', () => {
+  const dir = tmp();
+  runBuild({ rawText: text(), outDir: dir, source });
+  const older = withoutLastDay().replace('96.21 110.82', '96.31 110.82');
+  assert.throws(() => runBuild({ rawText: older, outDir: dir, source }), (e) => e.code === 'RESTATEMENT' && /2022-03-22/.test(e.message));
+});
+
+test('an older source with a day missing in the middle is still refused as CONTINUITY', () => {
+  const dir = tmp();
+  runBuild({ rawText: text(), outDir: dir, source });
+  const gappy = withoutLastDay().split('\n').filter((l) => !l.startsWith('20-Mar-22')).join('\n');
+  assert.throws(() => runBuild({ rawText: gappy, outDir: dir, source }), (e) => e.code === 'CONTINUITY');
+});
+

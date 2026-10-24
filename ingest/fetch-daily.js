@@ -75,36 +75,48 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const isTlsError = (e) => /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ERR_TLS/i.test(`${e?.cause?.code ?? ''} ${e?.code ?? ''} ${e?.message ?? ''}`);
 
 /**
- * Looks for the newest daily file link on each page in turn. A network error on one page moves on to
- * the next, and is returned in `pageErrors` so the download record shows it. If no page gave a link
- * and any page was unreachable, the first network error is thrown: "unreachable" is not "PPAC removed
- * the link". A TLS error always stops the run at once: a certificate failure is a result, never
- * something to route around.
+ * Looks for the newest daily file link on each page in turn. A network error, a 5xx or a 429 on a page
+ * is retried (`waits` gives the pauses, so three attempts by default) and then the next page is tried;
+ * every failure is returned in `pageErrors` so the download record shows it. If no page gave a link and
+ * any page was unreachable, the first network error is thrown: "unreachable" is not "PPAC removed the
+ * link". A 404 or a page without a link is not retried. A TLS error always stops the run at once: a
+ * certificate failure is a result, never something to route around.
  */
-export async function discoverLatest(pages = PAGES, { fetchFn = fetch, timeoutMs = 60000 } = {}) {
+export async function discoverLatest(
+  pages = PAGES,
+  { fetchFn = fetch, timeoutMs = 60000, waits = [5000, 20000], sleepFn = sleep } = {},
+) {
   const pageErrors = [];
   let firstError = null;
   let seen = { status: null, bytes: null };
+  const attempts = waits.length + 1;
   for (const page of pages) {
-    let html;
-    try {
-      const res = await fetchFn(page, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(timeoutMs) });
-      html = await res.text();
-      seen = { status: res.status, bytes: html.length };
-    } catch (e) {
-      if (isTlsError(e)) throw e;
-      firstError ??= e;
-      pageErrors.push(`${page}: ${e.message}${e.cause?.code ? ` (${e.cause.code})` : ''}`);
-      continue;
+    let html = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const res = await fetchFn(page, { headers: { 'User-Agent': USER_AGENT }, signal: AbortSignal.timeout(timeoutMs) });
+        const body = await res.text();
+        if (res.status >= 500 || res.status === 429) throw Object.assign(new Error(`HTTP ${res.status}`), { retryable: true });
+        html = body;
+        seen = { status: res.status, bytes: body.length };
+        break;
+      } catch (e) {
+        if (isTlsError(e)) throw e;
+        firstError ??= e;
+        pageErrors.push(`${page}: ${e.message}${e.cause?.code ? ` (${e.cause.code})` : ''} [attempt ${attempt} of ${attempts}]`);
+        if (attempt < attempts) await sleepFn(waits[attempt - 1]);
+      }
     }
+    if (html === null) continue;
     const picked = pickLatest(findDailyLinks(html, page));
     if (picked) return { picked, ...seen, pageErrors };
   }
+  // Also when another page answered without a link: with a page unreachable we cannot say the link is gone.
   if (firstError) throw Object.assign(firstError, { pageErrors });
   return { picked: null, ...seen, pageErrors };
 }
 
-export async function run({ waits = [30000, 120000, 300000], log = 'proof/download-log.jsonl' } = {}) {
+export async function run({ waits = [30000, 120000, 300000], pageWaits = [5000, 20000], log = 'proof/download-log.jsonl' } = {}) {
   const started = Date.now();
   const rec = {
     run_id: process.env.GITHUB_RUN_ID ?? randomUUID(),
@@ -117,7 +129,7 @@ export async function run({ waits = [30000, 120000, 300000], log = 'proof/downlo
   };
   let exit = 2;
   try {
-    const found = await discoverLatest();
+    const found = await discoverLatest(PAGES, { waits: pageWaits });
     rec.page_status = found.status;
     rec.page_bytes = found.bytes;
     rec.page_errors = found.pageErrors;

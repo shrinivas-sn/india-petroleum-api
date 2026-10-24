@@ -16,6 +16,10 @@ export function runFuel({ record, pdfSha256, rawText, outDir, approved = [], app
   const source = { source_url: record.file_url, sha256: record.sha256, fetched_at: record.started_at_utc };
   try {
     const r = runBuild({ rawText, outDir, source, approved, approvedMoves, knownGaps });
+    if (r.stale) {
+      const summary = `Source is older than the stored data (source ends ${r.stale.sourceLast}, stored ends ${r.stale.storedLast}): nothing changed.`;
+      return { code: 0, status: 'stale-source', summary, commitMessage: null };
+    }
     const { daily, meta } = r.built;
     const status = r.written ? 'written' : 'no-change';
     const summary = r.written

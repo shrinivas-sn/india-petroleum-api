@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import { rateLimit } from 'express-rate-limit';
 import { ApiError, CITIES, FuelService } from './fuel-service.js';
+import { DataStore } from './data-store.js';
 
 const NAME = 'India Petroleum API (PPAC fuel prices)';
 export const ATTRIBUTION_FALLBACK =
@@ -23,6 +24,9 @@ const PAGES = ['/', '/docs', '/playground', '/status', '/guides'];
 export function createApp(options = {}) {
   const app = express();
   const fuel = options.fuelService ?? new FuelService({ dataDir: options.dataDir });
+  const store = new DataStore({ service: fuel, remote: options.remote ?? null });
+  // Before any data answer: refresh from the repository if the TTL has passed. It never rejects or blocks long.
+  const refresh = (req, res, next) => store.ensureFresh().then(() => next(), next);
   app.set('trust proxy', options.trustProxy ?? 1);
   app.disable('x-powered-by');
 
@@ -65,6 +69,7 @@ export function createApp(options = {}) {
       description:
         'Free, keyless REST API for official daily retail petrol and diesel prices in Delhi, Mumbai, Chennai and Kolkata since 16 June 2017, from PPAC.',
       coverage: fuel.coverage(),
+      data_source: store.status().data_source,
       endpoints: ENDPOINTS,
       rate_limit: '100 requests per 15 minutes per IP address, counted on each server instance',
       status: 'operational',
@@ -79,13 +84,14 @@ export function createApp(options = {}) {
         ? res.sendFile(path.join(distDir, 'guides', req.params.id, 'index.html'))
         : next());
   }
-  app.get('/', info);
-  app.get('/health', info);
+  app.get('/', refresh, info);
+  app.get('/health', refresh, info);
 
   const v1 = express.Router();
+  v1.use(refresh);
   v1.get('/prices/latest', (req, res) => {
     const day = fuel.latest();
-    ok(res, day, { count: 1 });
+    ok(res, day, { count: 1, last_change: fuel.lastChanges() });
   });
 
   v1.get('/prices', (req, res) => {
@@ -118,7 +124,7 @@ export function createApp(options = {}) {
   });
 
   v1.get('/cities', (req, res) => ok(res, CITIES, { count: CITIES.length }));
-  v1.get('/meta', (req, res) => ok(res, fuel.provenance(), {}));
+  v1.get('/meta', (req, res) => ok(res, { ...fuel.provenance(), ...store.status() }, {}));
   app.use('/v1', v1);
 
   app.use((req, res) => {
@@ -140,5 +146,5 @@ export function createApp(options = {}) {
     return res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected internal server error occurred.' } });
   });
 
-  return { app, fuel };
+  return { app, fuel, store };
 }

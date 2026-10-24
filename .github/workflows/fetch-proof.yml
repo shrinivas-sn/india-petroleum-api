@@ -1,11 +1,9 @@
-# Phase 1 proof: can GitHub-hosted runners find and fully download the daily PPAC metro PDF
-# with TLS checks on? Twice a day; commits only the metadata log (proof/download-log.jsonl).
+# Phase 1 proof (retired as a schedule on 2026-10-24: fuel-ingest.yml now runs every three hours and
+# does the same download): can GitHub-hosted runners find and fully download the daily PPAC metro PDF
+# with TLS checks on? Manual only now; commits only the metadata log (proof/download-log.jsonl).
 name: fetch-proof
 
 on:
-  schedule:
-    - cron: '30 1 * * *' # 07:00 IST
-    - cron: '30 8 * * *' # 14:00 IST
   workflow_dispatch: {}
 
 permissions:

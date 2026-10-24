@@ -44,6 +44,22 @@ export function checkPlausible(daily, approvedMoves = []) {
   }
 }
 
+const sameDay = (a, b) =>
+  ['petrol', 'diesel'].every((fuel) => Object.keys({ ...a[fuel], ...b[fuel] }).every((city) => a[fuel][city] === b[fuel][city]));
+
+/**
+ * A source that ends before the stored data but agrees with every day it has, from the same first day,
+ * is just an older copy (PPAC or a cache serving yesterday's file). Anything else is judged normally.
+ */
+export function olderSource(daily, stored) {
+  if (!stored.length || !daily.length) return null;
+  const sourceLast = daily.at(-1).date;
+  const storedLast = stored.at(-1).date;
+  if (sourceLast >= storedLast || daily[0].date !== stored[0].date) return null;
+  const byDate = new Map(stored.map((d) => [d.date, d]));
+  return daily.every((d) => byDate.has(d.date) && sameDay(byDate.get(d.date), d)) ? { sourceLast, storedLast } : null;
+}
+
 export function buildFuelData(parsed, { stored = [], source, approved = [], approvedMoves = [], knownGaps = [] }) {
   if (!parsed.posted) throw fail('POSTED', 'the text has no "Table Posted" date');
   const daily = toDays(parsed);
@@ -59,6 +75,12 @@ export function buildFuelData(parsed, { stored = [], source, approved = [], appr
   }
 
   checkPlausible(daily, approvedMoves);
+
+  const stale = olderSource(daily, stored);
+  if (stale) {
+    const diff = { ok: true, appended: [], changedOld: [], removed: [], approvedChanges: [] };
+    return { daily: stored, changes: revisions(stored), meta: null, diff, stale };
+  }
 
   const diff = diffHistory(stored, daily, { approved });
   if (!diff.ok) {
@@ -100,6 +122,7 @@ export function readStored(dir) {
 export function runBuild({ rawText, outDir, source, approved = [], approvedMoves = [], knownGaps = [] }) {
   const stored = readStored(outDir);
   const built = buildFuelData(parseMetroText(rawText), { stored, source, approved, approvedMoves, knownGaps });
+  if (built.stale) return { written: false, appended: 0, built, stale: built.stale };
   const appended = built.diff.appended.length;
   if (stored.length > 0 && appended === 0 && built.diff.approvedChanges.length === 0) {
     return { written: false, appended, built };

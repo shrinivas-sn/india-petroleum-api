@@ -52,9 +52,34 @@ function readJson(dir, name) {
 
 export class FuelService {
   constructor({ dataDir = DEFAULT_DATA_DIR } = {}) {
-    this.days = readJson(dataDir, 'daily.json').days;
-    this.moves = readJson(dataDir, 'changes.json').changes;
-    this.meta = readJson(dataDir, 'meta.json');
+    this.load({
+      days: readJson(dataDir, 'daily.json').days,
+      moves: readJson(dataDir, 'changes.json').changes,
+      meta: readJson(dataDir, 'meta.json'),
+    });
+  }
+
+  // Replaces the data in one step (the store calls this after it has validated a newer dataset).
+  load({ days, moves, meta }) {
+    this.days = days;
+    this.moves = moves;
+    this.meta = meta;
+    this.last = null;
+  }
+
+  // The most recent change of every price: { petrol: { delhi: { date, from, to } | null, ... }, diesel: ... }.
+  lastChanges() {
+    if (this.last) return this.last;
+    const out = {};
+    for (const fuel of FUELS) {
+      out[fuel] = {};
+      for (const city of CITY_SLUGS) {
+        const found = this.moves.findLast((m) => m.fuel === fuel && m.city === city);
+        out[fuel][city] = found ? { date: found.date, from: found.from, to: found.to } : null;
+      }
+    }
+    this.last = out;
+    return out;
   }
 
   latest() {

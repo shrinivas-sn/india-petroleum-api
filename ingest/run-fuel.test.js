@@ -87,3 +87,18 @@ test('a published shock exits 3 and lists its dates, and goes through once those
   assert.equal(ok.code, 0);
   assert.equal(ok.status, 'written');
 });
+
+test('a source older than the stored data exits 0 with a notice that names both dates and changes nothing', () => {
+  const j = job();
+  runFuel(j);
+  const before = readFileSync(join(j.outDir, 'daily.json'), 'utf8');
+  const older = text().split('\n').filter((l) => !l.startsWith('7-Apr-22')).join('\n');
+  const r = runFuel({ ...j, rawText: older });
+  assert.equal(r.code, 0);
+  assert.equal(r.status, 'stale-source');
+  assert.match(r.summary, /older/);
+  assert.match(r.summary, /2022-04-06/);
+  assert.match(r.summary, /2022-04-07/);
+  assert.equal(readFileSync(join(j.outDir, 'daily.json'), 'utf8'), before);
+  assert.equal(r.commitMessage ?? null, null);
+});

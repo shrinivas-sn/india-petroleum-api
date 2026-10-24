@@ -71,7 +71,7 @@ test('discoverLatest tries the next page when the first one cannot be reached', 
     if (calls.length === 1) throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } });
     return { status: 200, text: async () => html };
   };
-  const found = await discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn });
+  const found = await discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn, waits: [] });
   assert.equal(calls.length, 2);
   assert.match(found.picked.url, /Metro_22\.10\.2026\.pdf$/);
   assert.equal(found.status, 200);
@@ -81,12 +81,12 @@ test('discoverLatest reports the network error when no page can be reached', asy
   const fetchFn = async () => {
     throw Object.assign(new Error('fetch failed'), { cause: { code: 'ETIMEDOUT' } });
   };
-  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), /fetch failed/);
+  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn, waits: [] }), /fetch failed/);
 });
 
 test('discoverLatest returns no link, not an error, when pages answer without one', async () => {
   const fetchFn = async () => ({ status: 200, text: async () => '<p>nothing here</p>' });
-  const found = await discoverLatest(['https://a.test/'], { fetchFn });
+  const found = await discoverLatest(['https://a.test/'], { fetchFn, waits: [] });
   assert.equal(found.picked, null);
 });
 
@@ -96,7 +96,7 @@ test('discoverLatest never works around a TLS failure', async () => {
     calls.push(url);
     throw Object.assign(new Error('fetch failed'), { cause: { code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' } });
   };
-  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }));
+  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn, waits: [] }));
   assert.equal(calls.length, 1, 'a certificate failure stops the run, it does not try another page');
 });
 
@@ -110,7 +110,7 @@ test('discoverLatest reports a failed primary page even when the fallback page s
     if (n === 1) throw reset('ECONNRESET');
     return { status: 200, text: async () => LINK_PAGE };
   };
-  const found = await discoverLatest(['https://primary.test/', 'https://fallback.test/'], { fetchFn });
+  const found = await discoverLatest(['https://primary.test/', 'https://fallback.test/'], { fetchFn, waits: [] });
   assert.ok(found.picked);
   assert.equal(found.pageErrors.length, 1);
   assert.match(found.pageErrors[0], /primary\.test.*fetch failed.*ECONNRESET/);
@@ -125,7 +125,7 @@ test('discoverLatest names a network failure, not a missing link, when one page 
       if (unreachable) throw reset('ETIMEDOUT');
       return { status: 200, text: async () => '<p>nothing</p>' };
     };
-    await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), /fetch failed/, order);
+    await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn, waits: [] }), /fetch failed/, order);
   }
 });
 
@@ -135,14 +135,14 @@ test('discoverLatest keeps the first network error when every page fails', async
     n += 1;
     throw Object.assign(new Error(`fetch failed ${n}`), { cause: { code: 'ECONNRESET' } });
   };
-  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), /fetch failed 1/);
+  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn, waits: [] }), /fetch failed 1/);
 });
 
 test('discoverLatest attaches every page error to the error it throws, so the record can show them', async () => {
   const fetchFn = async (url) => {
     throw Object.assign(new Error('fetch failed'), { cause: { code: url.includes('a.test') ? 'ECONNRESET' : 'ETIMEDOUT' } });
   };
-  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), (e) => {
+  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn, waits: [] }), (e) => {
     assert.equal(e.pageErrors.length, 2);
     assert.match(e.pageErrors[0], /a\.test.*ECONNRESET/);
     assert.match(e.pageErrors[1], /b\.test.*ETIMEDOUT/);
@@ -158,7 +158,7 @@ test('run() writes the page errors into the download record when no page could b
     throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } });
   };
   try {
-    const exit = await run({ waits: [], log });
+    const exit = await run({ waits: [], pageWaits: [], log });
     assert.equal(exit, 2);
   } finally {
     globalThis.fetch = realFetch;
@@ -168,4 +168,75 @@ test('run() writes the page errors into the download record when no page could b
   assert.match(rec.error, /fetch failed/);
   assert.equal(rec.page_errors.length, 2);
   assert.match(rec.page_errors[0], /ECONNRESET/);
+});
+
+// Retries on the listing pages: PPAC's server is slow and flaky, and one blip must not cost a run.
+const okPage = (status = 200, html = LINK_PAGE) => ({ status, text: async () => html });
+const noSleep = () => { const waits = []; const fn = async (ms) => { waits.push(ms); }; fn.waits = waits; return fn; };
+
+test('discoverLatest retries a page after a network error and then finds the link', async () => {
+  let n = 0;
+  const sleepFn = noSleep();
+  const fetchFn = async () => {
+    n += 1;
+    if (n === 1) throw reset('ECONNRESET');
+    return okPage();
+  };
+  const found = await discoverLatest(['https://a.test/'], { fetchFn, sleepFn, waits: [5, 20] });
+  assert.equal(n, 2);
+  assert.ok(found.picked);
+  assert.deepEqual(sleepFn.waits, [5]);
+  assert.match(found.pageErrors[0], /attempt 1 of 3.*ECONNRESET|ECONNRESET.*attempt 1 of 3/);
+});
+
+test('discoverLatest treats a 503 and a 429 as retryable, with the configured waits', async () => {
+  const statuses = [503, 429, 200];
+  let n = 0;
+  const sleepFn = noSleep();
+  const fetchFn = async () => okPage(statuses[n++], statuses[n - 1] === 200 ? LINK_PAGE : '<p>try later</p>');
+  const found = await discoverLatest(['https://a.test/'], { fetchFn, sleepFn, waits: [5, 20] });
+  assert.ok(found.picked);
+  assert.deepEqual(sleepFn.waits, [5, 20]);
+  assert.equal(found.pageErrors.length, 2);
+  assert.match(found.pageErrors[0], /HTTP 503/);
+});
+
+test('discoverLatest gives up on a page after three attempts and moves to the fallback page', async () => {
+  const calls = [];
+  const sleepFn = noSleep();
+  const fetchFn = async (url) => {
+    calls.push(url);
+    if (url.includes('primary')) return okPage(503, '<p>down</p>');
+    return okPage();
+  };
+  const found = await discoverLatest(['https://primary.test/', 'https://fallback.test/'], { fetchFn, sleepFn, waits: [5, 20] });
+  assert.equal(calls.filter((u) => u.includes('primary')).length, 3);
+  assert.equal(calls.filter((u) => u.includes('fallback')).length, 1);
+  assert.ok(found.picked);
+  assert.equal(found.pageErrors.length, 3);
+});
+
+test('discoverLatest does not retry a page that answered 404 or answered without a link', async () => {
+  let n = 0;
+  const sleepFn = noSleep();
+  const fetchFn = async () => {
+    n += 1;
+    return okPage(404, '<p>not here</p>');
+  };
+  const found = await discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn, sleepFn, waits: [5, 20] });
+  assert.equal(n, 2);
+  assert.equal(found.picked, null);
+  assert.deepEqual(sleepFn.waits, []);
+});
+
+test('discoverLatest does not retry a TLS failure', async () => {
+  let n = 0;
+  const sleepFn = noSleep();
+  const fetchFn = async () => {
+    n += 1;
+    throw Object.assign(new Error('fetch failed'), { cause: { code: 'CERT_HAS_EXPIRED' } });
+  };
+  await assert.rejects(discoverLatest(['https://a.test/'], { fetchFn, sleepFn, waits: [5, 20] }));
+  assert.equal(n, 1);
+  assert.deepEqual(sleepFn.waits, []);
 });

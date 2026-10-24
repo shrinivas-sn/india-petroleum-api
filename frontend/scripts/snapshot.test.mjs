@@ -9,6 +9,11 @@ const read = (name) => JSON.parse(fs.readFileSync(fileURLToPath(new URL(name, da
 const days = read('daily.json').days;
 const moves = read('changes.json').changes;
 const meta = read('meta.json');
+// Facts about the largest moves and the longest pause are pinned to the data as of this date, so a
+// later real shock or pause (and the daily append) cannot fail a test about 2022.
+const PINNED_TO = '2026-10-23';
+const pinnedDays = days.filter((d) => d.date <= PINNED_TO);
+const pinnedMoves = moves.filter((m) => m.date <= PINNED_TO);
 
 test('step points rebuild every stored price exactly', () => {
   const first = days[0].date;
@@ -32,7 +37,7 @@ test('step points hold one entry per change, not one per day', () => {
 });
 
 test('the largest Delhi moves include the 22 May 2022 cut and are far enough apart', () => {
-  const picks = highlights(moves);
+  const picks = highlights(pinnedMoves);
   assert.equal(picks.length, 4);
   const cut = picks.find((p) => p.date === '2022-05-22');
   assert.deepEqual(cut.moves.petrol, { from: 105.41, to: 96.72, change: -8.69 });
@@ -45,7 +50,7 @@ test('the largest Delhi moves include the 22 May 2022 cut and are far enough apa
 });
 
 test('the longest flat stretch for Delhi runs from 22 May 2022 for 663 days', () => {
-  const flat = longestFlat(days, 'delhi');
+  const flat = longestFlat(pinnedDays, 'delhi');
   assert.equal(flat.from, '2022-05-22');
   assert.equal(flat.to, '2024-03-14');
   assert.equal(flat.days, 663);

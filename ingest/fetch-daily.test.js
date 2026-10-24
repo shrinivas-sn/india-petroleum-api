@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer } from 'node:http';
-import { findDailyLinks, pickLatest, downloadComplete, discoverLatest } from './fetch-daily.js';
+import { findDailyLinks, pickLatest, downloadComplete, discoverLatest, run } from './fetch-daily.js';
 
 const fx = (name) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -134,4 +136,36 @@ test('discoverLatest keeps the first network error when every page fails', async
     throw Object.assign(new Error(`fetch failed ${n}`), { cause: { code: 'ECONNRESET' } });
   };
   await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), /fetch failed 1/);
+});
+
+test('discoverLatest attaches every page error to the error it throws, so the record can show them', async () => {
+  const fetchFn = async (url) => {
+    throw Object.assign(new Error('fetch failed'), { cause: { code: url.includes('a.test') ? 'ECONNRESET' : 'ETIMEDOUT' } });
+  };
+  await assert.rejects(discoverLatest(['https://a.test/', 'https://b.test/'], { fetchFn }), (e) => {
+    assert.equal(e.pageErrors.length, 2);
+    assert.match(e.pageErrors[0], /a\.test.*ECONNRESET/);
+    assert.match(e.pageErrors[1], /b\.test.*ETIMEDOUT/);
+    return true;
+  });
+});
+
+test('run() writes the page errors into the download record when no page could be reached', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dl-'));
+  const log = join(dir, 'download-log.jsonl');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } });
+  };
+  try {
+    const exit = await run({ waits: [], log });
+    assert.equal(exit, 2);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const rec = JSON.parse(readFileSync(log, 'utf8').trim().split('\n').at(-1));
+  assert.equal(rec.complete, false);
+  assert.match(rec.error, /fetch failed/);
+  assert.equal(rec.page_errors.length, 2);
+  assert.match(rec.page_errors[0], /ECONNRESET/);
 });

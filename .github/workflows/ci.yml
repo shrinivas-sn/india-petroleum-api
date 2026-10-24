@@ -1,5 +1,6 @@
-# Tests and the production build on every push to main and every pull request, so a change cannot
-# reach the branch Vercel deploys without passing them. Read-only: it never commits.
+# Tests and the production build on every push to main and every pull request, so a failing change
+# is visible on its commit or pull request. It blocks nothing by itself: make `verify` a required check
+# in branch protection for that (docs/GO-LIVE.md). Read-only: it never commits.
 name: ci
 
 on:
@@ -12,7 +13,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Only a superseded pull-request run is cancelled; every push to main keeps its own verdict.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:

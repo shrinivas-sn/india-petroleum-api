@@ -177,3 +177,22 @@ test('the refusal message lists every affected date, so a spike and its reversio
   for (const fuel of ['petrol', 'diesel']) for (const city of Object.keys(spiked[3][fuel])) spiked[3][fuel][city] += 30;
   assert.throws(() => checkPlausible(spiked), (e) => e.message.includes(spiked[3].date) && e.message.includes(spiked[4].date) && /dates: /.test(e.message));
 });
+
+test('a stored day that vanished from the table is refused, and the message does not suggest an approval that cannot clear it', () => {
+  const dir = tmp();
+  runBuild({ rawText: text(), outDir: dir, source });
+  const shorter = text().split('\n').filter((l) => !l.startsWith('7-Apr-22')).join('\n');
+  assert.throws(
+    () => runBuild({ rawText: shorter, outDir: dir, source, approved: ['2022-04-07'] }),
+    (e) => e.code === 'RESTATEMENT' && /vanished/.test(e.message) && /2022-04-07/.test(e.message) && !/approve in approved-restatements/.test(e.message),
+  );
+});
+
+test('a changed price still points at approved-restatements.json', () => {
+  const dir = tmp();
+  runBuild({ rawText: text(), outDir: dir, source });
+  assert.throws(
+    () => runBuild({ rawText: text().replace('96.21 110.82', '96.31 110.82'), outDir: dir, source }),
+    (e) => e.code === 'RESTATEMENT' && /changed/.test(e.message) && /approve in approved-restatements\.json/.test(e.message),
+  );
+});

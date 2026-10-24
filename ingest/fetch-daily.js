@@ -100,7 +100,7 @@ export async function discoverLatest(pages = PAGES, { fetchFn = fetch, timeoutMs
     const picked = pickLatest(findDailyLinks(html, page));
     if (picked) return { picked, ...seen, pageErrors };
   }
-  if (firstError) throw firstError;
+  if (firstError) throw Object.assign(firstError, { pageErrors });
   return { picked: null, ...seen, pageErrors };
 }
 
@@ -149,6 +149,7 @@ export async function run({ waits = [30000, 120000, 300000], log = 'proof/downlo
     exit = 0;
   } catch (e) {
     if (isTlsError(e)) rec.tls_verified = false;
+    if (Array.isArray(e.pageErrors) && e.pageErrors.length) rec.page_errors = e.pageErrors;
     rec.error = String(e.message ?? e).slice(0, 300);
   } finally {
     rec.seconds_total = Math.round((Date.now() - started) / 100) / 10;

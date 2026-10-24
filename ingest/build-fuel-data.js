@@ -62,8 +62,12 @@ export function buildFuelData(parsed, { stored = [], source, approved = [], appr
 
   const diff = diffHistory(stored, daily, { approved });
   if (!diff.ok) {
-    const dates = [...new Set([...diff.changedOld.map((c) => c.date), ...diff.removed])].sort();
-    throw fail('RESTATEMENT', `stored days changed or vanished: ${dates.join(', ')} (approve in approved-restatements.json)`);
+    const changed = [...new Set(diff.changedOld.map((c) => c.date))].sort();
+    const removed = [...new Set(diff.removed)].sort();
+    const parts = [];
+    if (changed.length) parts.push(`stored days changed: ${changed.join(', ')} (approve in approved-restatements.json)`);
+    if (removed.length) parts.push(`stored days vanished from the table: ${removed.join(', ')} (approval cannot clear a removed day: PPAC dropped rows, check the PDF)`);
+    throw fail('RESTATEMENT', parts.join('; '));
   }
 
   const meta = {

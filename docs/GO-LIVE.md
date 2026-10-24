@@ -7,16 +7,17 @@ What is left before the fuel module is public, in order. The generic deploy step
 1. **Phase 1 verdict.** The daily cron stays off until the proof week passes (plan rule: seven days, each with at least one complete, TLS-verified download from a GitHub runner). `node ingest/summarize-proof.js` prints the count. When it passes: give `fuel-ingest.yml` its `schedule:` trigger and retire `fetch-proof.yml` in the same commit. The owner may waive the rule; the cost is learning about any PPAC blocking from failed runs instead of from the week.
 2. **Vercel project.** Import the GitHub repo. No environment variables are needed for the fuel module. `SITE_URL` is optional: Vercel supplies the production host to the build, which sets canonical tags, `sitemap.xml` and `robots.txt`.
 3. **Search Console.** Add the property, download the `google<token>.html` file into `frontend/public/` and commit it. Without it the `gsc-file` check fails. Submit `sitemap.xml` under Indexing > Sitemaps.
-4. **After the first deploy:** `node api-projects/pipeline/deploy/record-live.js --project api-projects/projects/india-petroleum-api --portal <url> --api <url>`, then fill `routes` in `api.json` (the list is in `docs/DECISIONS.md`, "routes stay empty until go-live"), run `run-checks.js --stage production` against the live URL, and run `prod-site-auditor` on it.
+4. **Optional: make CI a merge gate.** `ci.yml` reports on every push to main and every pull request, but it blocks nothing until `verify` is a required check in the branch protection rules. If you require it, let the ingest bot's direct push to main bypass the rule: its commits come from the workflow token and do not start CI.
+5. **After the first deploy:** `node api-projects/pipeline/deploy/record-live.js --project api-projects/projects/india-petroleum-api --portal <url> --api <url>`, then fill `routes` in `api.json` (the list is in `docs/DECISIONS.md`, "routes stay empty until go-live"), run `run-checks.js --stage production` against the live URL, and run `prod-site-auditor` on it.
 
 ## When the daily job refuses the data
 
 The job fails closed: nothing is committed, the PDF and a failure report are kept as a run artifact for seven days. The first line of the report names the check:
 
-- `CONTINUITY`: a day is missing, repeated or incomplete in PPAC's table. Look at the PDF; if PPAC really skipped a day, add `{ "date": "YYYY-MM-DD", "reason": "..." }` (and `"fuel"` if only one fuel is missing) to `ingest/known-gaps.json`.
-- `RESTATEMENT`: PPAC changed a price it had already published. Check the PDF, then list the date in `ingest/approved-restatements.json`.
+- `CONTINUITY`: a day is missing, repeated or incomplete in PPAC's table. Look at the PDF; if PPAC really skipped a day, add `{ "date": "YYYY-MM-DD", "reason": "..." }` to `ingest/known-gaps.json`.
+- `RESTATEMENT`: PPAC changed a price it had already published. Check the PDF, then list the date in `ingest/approved-restatements.json`. If the message says stored days *vanished* from the table, listing a date does not help (a removed day is always refused): PPAC dropped rows from its file, so wait for it to restore them.
 - `IMPLAUSIBLE`: a price outside 20 to 500 rupees, or a move of more than 20 from the day before (the largest real one since 2017 is 12.48). Most often a typo in PPAC's table: wait for the correction. If the figures are real, list every date the message names in `ingest/approved-moves.json`; a spike and its reversion are two dates. Approving a date waives the check for all eight prices that day.
-- Anything else, or a download error: the next run retries; two days without new data trip the freshness alarm.
+- Anything else, or a download error: nothing is committed and the run is red, which is the alarm for these cases. Once the cron is on, the next run retries. The freshness job covers the other case: a run that succeeded but found no new day for more than two days.
 
 ## Copy that is only true once the schedule is on
 

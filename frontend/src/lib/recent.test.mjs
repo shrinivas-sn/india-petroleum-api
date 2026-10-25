@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PERIODS, changesOver } from './recent.js';
+import { HOLD_NOTICE_DAYS, PERIODS, changesOver, heldFor } from './recent.js';
 
 const CITIES = ['delhi', 'mumbai', 'chennai', 'kolkata'];
 const addDay = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
@@ -61,4 +61,24 @@ test('rows missing a city or fuel do not throw: that cell is unknown', () => {
   const out = changesOver(data, '2026-10-23');
   assert.deepEqual(out.diesel.kolkata, { day: null, week: null, month: null });
   assert.equal(out.petrol.kolkata.day, 0);
+});
+
+// --- how long a price has held -------------------------------------------------------------------------------
+const lastChange = (date) => ({ petrol: { delhi: { date, from: 99.51, to: 102.12 } }, diesel: { delhi: null } });
+
+test('heldFor counts the days from the last change to the newest day', () => {
+  assert.deepEqual(heldFor(lastChange('2026-05-25'), 'petrol', 'delhi', '2026-10-23'), { since: '2026-05-25', days: 151 });
+  assert.deepEqual(heldFor(lastChange('2026-10-23'), 'petrol', 'delhi', '2026-10-23'), { since: '2026-10-23', days: 0 });
+});
+
+test('heldFor is null when the API gave no usable last change for that price', () => {
+  assert.equal(heldFor(undefined, 'petrol', 'delhi', '2026-10-23'), null);
+  assert.equal(heldFor(lastChange('2026-05-25'), 'petrol', 'mumbai', '2026-10-23'), null, 'no entry for the city');
+  assert.equal(heldFor(lastChange('2026-05-25'), 'diesel', 'delhi', '2026-10-23'), null, 'a price that never changed');
+  assert.equal(heldFor(lastChange('not a date'), 'petrol', 'delhi', '2026-10-23'), null);
+  assert.equal(heldFor(lastChange('2026-11-01'), 'petrol', 'delhi', '2026-10-23'), null, 'a change after the newest day makes no sense');
+});
+
+test('a price is announced as held only from the longest period the board shows', () => {
+  assert.equal(HOLD_NOTICE_DAYS, 30);
 });

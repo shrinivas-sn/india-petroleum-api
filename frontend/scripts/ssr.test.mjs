@@ -79,7 +79,20 @@ const metaBody = (over = {}) => ({
   success: true,
   data: { ...snap.meta, days_behind: 0, data_source: 'remote', checked_at: NOW.toISOString(), refresh_error: null, ...over },
 });
-const latestBody = (day = snap.latest) => ({ success: true, data: day, meta: { count: 1 } });
+const latestBody = (day = snap.latest, lastChange) => ({
+  success: true,
+  data: day,
+  meta: { count: 1, ...(lastChange && { last_change: lastChange }) },
+});
+// What /v1/prices/latest says about when each price last moved: every price on `date`, except those in `except`.
+const lastChangeOn = (date, except = {}) =>
+  Object.fromEntries(
+    ['petrol', 'diesel'].map((fuel) => [
+      fuel,
+      Object.fromEntries(['delhi', 'mumbai', 'chennai', 'kolkata'].map((city) => [city, { date: except[`${fuel}.${city}`] ?? date, from: 1, to: 2 }])),
+    ]),
+  );
+const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
 const monthBody = () => snap.examples.board.body;
 const fresh = () => readLive(metaBody(), latestBody(), NOW, monthBody());
 const stale = (daysBehind = 5) => readLive(metaBody({ days_behind: daysBehind }), latestBody(), NOW, monthBody());
@@ -142,8 +155,8 @@ test('offline keeps the build-time figures on screen, says so everywhere, and of
   assert.ok(page('/', state).includes(snap.latest.diesel.kolkata.toFixed(2)), 'the build-time board is still drawn');
 });
 
-test('the board shows the change over 1, 7 and 30 days under every price, and no "last change" or old date anywhere in it', () => {
-  for (const [name, state] of [['prerendered', snapshotState(snap)], ['live', fresh()], ['stale', stale()]]) {
+test('with no last-change dates the board shows the change over 1, 7 and 30 days under every price, and no "last change" or old date', () => {
+  for (const [name, state] of [['live', fresh()], ['stale', stale()]]) {
     const board = boardOf(page('/', state));
     assert.equal(count(board, 'class="board__changes"'), 8, `${name}: one block per city and fuel`);
     assert.equal(count(board, '<dt>1 day</dt>'), 8, name);
@@ -154,6 +167,40 @@ test('the board shows the change over 1, 7 and 30 days under every price, and no
   }
 });
 
+test('a price that has held for a month or more says for how long instead of a row of zeros, in the build and when live', () => {
+  const since = snap.examples.latest.body.meta.last_change.petrol.delhi.date;
+  const days = daysBetween(since, snap.latest.date);
+  assert.ok(days >= 30, 'the build data has held for a month or more, otherwise this test says nothing');
+  const live = readLive(metaBody(), latestBody(snap.latest, snap.examples.latest.body.meta.last_change), NOW, monthBody());
+  for (const [name, state] of [['prerendered', snapshotState(snap)], ['live', live]]) {
+    const board = boardOf(page('/', state));
+    assert.equal(count(board, 'class="board__held"'), 8, `${name}: one line per city and fuel`);
+    assert.equal(count(board, 'board__changes'), 0, `${name}: no rows of changes`);
+    assert.equal(count(plain(board), `Unchanged for ${days} days since ${formatDate(since)}`), 8, name);
+    assert.doesNotMatch(plain(board), /0\.00|Last change|No change on record/, `${name}: no zeros, no old wording`);
+    assert.match(plain(board), /Under each price: how long it has stayed the same\./, name);
+    assert.ok(board.includes(snap.latest.petrol.delhi.toFixed(2)), name);
+  }
+});
+
+test('a price that moved lately still shows its change, next to the others that have held', () => {
+  const newest = '2026-10-30';
+  const day = { ...snap.latest, date: newest, petrol: { ...snap.latest.petrol, delhi: 103.5 } };
+  const rows = [...monthBody().data];
+  // The build's days, then flat days at the old price up to the day before `newest`, which alone has the new price.
+  for (let d = Date.parse(`${snap.latest.date}T00:00:00Z`) + 86400000; d < Date.parse(`${newest}T00:00:00Z`); d += 86400000) {
+    rows.push({ ...snap.latest, date: new Date(d).toISOString().slice(0, 10) });
+  }
+  rows.push(day);
+  const lastChange = lastChangeOn('2026-05-25', { 'petrol.delhi': newest });
+  const state = readLive(metaBody({ last_date: newest }), latestBody(day, lastChange), NOW, { success: true, data: rows });
+  const board = boardOf(page('/', state));
+  assert.equal(count(board, 'class="board__held"'), 7);
+  assert.equal(count(board, 'class="board__changes"'), 1);
+  assert.match(plain(board), /Delhi 103\.50 1 day \+1\.38 7 days \+1\.38 30 days \+1\.38/);
+  assert.match(plain(board), /how long it has stayed the same, or its change over the last 1, 7 and 30 days/);
+});
+
 test('without a month of rows the board shows today\'s prices alone, with no changes and no made-up zeros', () => {
   const board = boardOf(page('/', readLive(metaBody(), latestBody(), NOW)));
   assert.equal(count(board, 'board__changes'), 0);
@@ -161,7 +208,7 @@ test('without a month of rows the board shows today\'s prices alone, with no cha
   assert.ok(board.includes(snap.latest.petrol.delhi.toFixed(2)));
 });
 
-test('a price that did not move reads 0.00 for every period', () => {
+test('without last-change dates, a price that did not move reads 0.00 for every period', () => {
   const board = plain(boardOf(page('/', fresh())));
   assert.match(board, /1 day 0\.00 7 days 0\.00 30 days 0\.00/);
 });

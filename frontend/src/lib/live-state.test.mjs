@@ -179,3 +179,41 @@ test('an offline state within the limit does not claim the data is old', () => {
   assert.equal(banner.kind, 'offline');
   assert.doesNotMatch(banner.message, /days ago/);
 });
+
+// --- last change of every price ------------------------------------------------------------------------------
+const lastChanges = (date = '2026-05-25') =>
+  Object.fromEntries(['petrol', 'diesel'].map((fuel) => [fuel, Object.fromEntries(CITIES.map((city) => [city, { date, from: 90, to: 92 }]))]));
+const latestWithChanges = (last_change) => ({ success: true, data: day('2026-10-23'), meta: { count: 1, last_change } });
+
+test('readLive keeps the date each price last changed, from the meta of /v1/prices/latest', () => {
+  const state = readLive(metaBody(), latestWithChanges(lastChanges()), new Date('2026-10-24T03:00:00Z'));
+  assert.equal(state.lastChange.petrol.delhi.date, '2026-05-25');
+  assert.equal(state.lastChange.diesel.kolkata.date, '2026-05-25');
+});
+
+test('readLive without a usable last_change is still live, with nothing to say about how long prices held', () => {
+  const now = new Date('2026-10-24T03:00:00Z');
+  assert.equal(readLive(metaBody(), { success: true, data: day('2026-10-23') }, now).lastChange, null, 'no meta');
+  assert.equal(readLive(metaBody(), latestWithChanges('soon'), now).lastChange, null, 'not an object');
+  const bad = lastChanges();
+  bad.petrol.delhi = { date: 'yesterday' };
+  const state = readLive(metaBody(), latestWithChanges(bad), now);
+  assert.equal(state.status, 'live');
+  assert.equal(state.lastChange.petrol.delhi, null, 'the bad entry is dropped');
+  assert.equal(state.lastChange.petrol.mumbai.date, '2026-05-25', 'the good ones stay');
+});
+
+test('the snapshot state reads the last changes from the stored /v1/prices/latest example', () => {
+  const withExample = { ...snapshot, examples: { ...snapshot.examples, latest: { body: latestWithChanges(lastChanges('2026-05-15')) } } };
+  assert.equal(snapshotState(withExample).lastChange.diesel.chennai.date, '2026-05-15');
+  assert.equal(snapshotState(snapshot).lastChange, null, 'a snapshot without the example');
+});
+
+test('loadLive carries the last changes into the live state', async () => {
+  const get = async (path) => {
+    if (path === '/v1/meta') return { body: metaBody() };
+    if (path === '/v1/prices/latest') return { body: latestWithChanges(lastChanges()) };
+    return { body: pricesBody() };
+  };
+  assert.equal((await loadLive(get, { now: new Date('2026-10-24T03:00:00Z') })).lastChange.petrol.delhi.date, '2026-05-25');
+});

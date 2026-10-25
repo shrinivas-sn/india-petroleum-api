@@ -1,6 +1,6 @@
 // How much each price moved over the last day, week and month, from the API's own daily rows. The price
 // board shows these under today's figure, so a reader sees recent movement and never a stale-looking date.
-import { addDays, CITY_SLUGS, FUEL_SLUGS } from './series.js';
+import { addDays, CITY_SLUGS, dayIndex, FUEL_SLUGS } from './series.js';
 
 export const PERIODS = [
   { id: 'day', days: 1, label: '1 day' },
@@ -34,4 +34,20 @@ export function changesOver(rows, newestIso) {
     }
   }
   return out;
+}
+
+// Past the longest period above, every change is 0.00, so the board says how long the price has held instead.
+export const HOLD_NOTICE_DAYS = Math.max(...PERIODS.map((p) => p.days));
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * How long one price has stayed as it is: { since, days } with `since` the date of its last change and `days`
+ * counted from there to `newestIso`. `lastChange` is live-state's { fuel: { city: { date } | null } }. Null when
+ * there is no usable date for that price, or the date is after the newest day.
+ */
+export function heldFor(lastChange, fuel, city, newestIso) {
+  const since = lastChange?.[fuel]?.[city]?.date;
+  if (typeof since !== 'string' || !ISO.test(since) || since > newestIso) return null;
+  return { since, days: dayIndex(newestIso, since) };
 }

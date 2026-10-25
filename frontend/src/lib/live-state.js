@@ -23,6 +23,7 @@ export function snapshotState(snapshot) {
     latest: snapshot.latest,
     // The last 31 days for every city and fuel, as the API returned them at build time.
     recent: checkRecent(snapshot.examples?.board?.body),
+    lastChange: checkLastChange(snapshot.examples?.latest?.body),
     daysBehind: null,
     checkedAt: null,
     error: null,
@@ -75,6 +76,25 @@ function checkLatest(body) {
   return day;
 }
 
+/**
+ * The date each price last changed, from the meta of the /v1/prices/latest answer, as
+ * { fuel: { city: { date } | null } }; an entry that is not a dated change becomes null, and null means the
+ * answer had no usable list (the board then shows no "unchanged for" lines).
+ */
+function checkLastChange(body) {
+  const list = body?.meta?.last_change;
+  if (!list || typeof list !== 'object') return null;
+  const out = {};
+  for (const fuel of FUEL_SLUGS) {
+    out[fuel] = {};
+    for (const city of CITY_SLUGS) {
+      const date = list[fuel]?.[city]?.date;
+      out[fuel][city] = isIso(date) ? { date } : null;
+    }
+  }
+  return out;
+}
+
 /** The /v1/prices answer for the last month as a list of dated rows, or null if it is not one (the board then shows no changes). */
 function checkRecent(body) {
   const rows = body?.data;
@@ -95,6 +115,7 @@ export function readLive(metaBody, latestBody, now = new Date(), pricesBody = nu
     meta,
     latest,
     recent: checkRecent(pricesBody),
+    lastChange: checkLastChange(latestBody),
     daysBehind: meta.days_behind,
     checkedAt: now.toISOString(),
     error: null,

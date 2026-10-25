@@ -20,6 +20,12 @@ Fix: `frontend/src/index.css`, `@media (max-height: 36rem)`: `.table-scroll--sho
 Status: fixed (re-probed 2026-10-24 with `--only fixed-bar-budget`: land 123 px (31.5%) -> 0 px (0%); xs 0, sm 123 px (14.6%, pass), md 0).
 Note for the probe: sticky cells inside an `overflow: auto` ancestor are counted as pinned chrome; excluding descendants of a scroller would make it measure what the family names.
 
+## Re-run 2026-10-25, `/` only, after the "Unchanged for N days" board
+
+What changed: under each price the board prints two short lines ("Unchanged for 151 days", "since 25 May 2026", 14 px) in place of three rows of `0.00`; no new media query. Scope: `/` at the four viewports, served by the project's own app at `http://127.0.0.1:3100` with the limiter off (`frontend/dist` from `npm run build`), the same probe and Chrome as above (puppeteer-core 25.16.0). The other routes were not re-probed: the change is inside the home board.
+
+Result: 0 fail, 0 unstable. `overflow-x` passes at xs, sm, md and land; `tap-targets`, `layout-collision` and `fixed-bar-budget` pass where measured; `text-legibility` is the usual warning with 0 failing nodes and 7 warning nodes at 390 px, the same count as the previous run for `/` (the new text is 14 px, in the same band). By eye: at 320 px the date line wraps ("since 25 May" over "2026") inside the cell; at 1100 px each line sits on one line.
+
 ## Run profile
 - Stack: Vite 5, React 18, react-router-dom 6, plain CSS in `frontend/src/index.css`, no Tailwind. Prerendered `frontend/dist`.
 - Serve URL: `http://127.0.0.1:3000`, the project's own Express app (`backend/src/app.js`) serving `frontend/dist` and `/v1`, started for this run with the rate limiter off (see "First run discarded").

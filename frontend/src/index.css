@@ -384,6 +384,18 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
+/* How long a price has held, in place of a row of 0.00 once nothing has moved for a month */
+.board__held {
+  margin: var(--space-2) 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.board__held span {
+  display: block;
+}
+
 .num {
   text-align: right !important;
   font-variant-numeric: tabular-nums;

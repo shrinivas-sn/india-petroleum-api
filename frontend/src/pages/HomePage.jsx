@@ -41,7 +41,7 @@ function FreshnessNote({ state }) {
 export default function HomePage() {
   const origin = useOrigin();
   const { state } = useLiveData();
-  const { latest, recent, meta } = state;
+  const { latest, recent, meta, lastChange } = state;
   const changes = changesOver(recent, latest.date);
 
   return (
@@ -60,7 +60,7 @@ export default function HomePage() {
           </p>
         </div>
         <div>
-          <PriceBoard latest={latest} changes={changes} />
+          <PriceBoard latest={latest} changes={changes} lastChange={lastChange} />
           <FreshnessNote state={state} />
         </div>
       </section>

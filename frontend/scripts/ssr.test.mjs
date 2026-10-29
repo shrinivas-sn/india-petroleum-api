@@ -97,10 +97,12 @@ const monthBody = () => snap.examples.board.body;
 const fresh = () => readLive(metaBody(), latestBody(), NOW, monthBody());
 const stale = (daysBehind = 5) => readLive(metaBody({ days_behind: daysBehind }), latestBody(), NOW, monthBody());
 // The stored data grows every day, so "later than the build" is counted from the build's newest day.
+const newDelhi = () => Math.round((snap.latest.petrol.delhi + 1.38) * 100) / 100;
+const newDelhiRow = () => new RegExp(`Delhi ${newDelhi().toFixed(2).replace('.', '\\.')} 1 day \\+1\\.38 7 days \\+1\\.38 30 days \\+1\\.38`);
 const weekAfterBuild = () => new Date(Date.parse(`${snap.latest.date}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
 const offline = () => offlineState(snapshotState(snap), 'Could not reach the API. Check your connection and try again.', new Date(`${weekAfterBuild()}T03:00:00Z`));
 const newerDay = (date) => {
-  const day = { ...snap.latest, date, petrol: { ...snap.latest.petrol, delhi: 103.5 }, diesel: { ...snap.latest.diesel } };
+  const day = { ...snap.latest, date, petrol: { ...snap.latest.petrol, delhi: newDelhi() }, diesel: { ...snap.latest.diesel } };
   // The rows the API would return: the build's days, then one flat day after another up to the new one,
   // which alone carries the new Delhi petrol price.
   const rows = [...monthBody().data];
@@ -119,7 +121,7 @@ test('the prerendered page (snapshot state) shows build-time figures, says so, a
   assert.equal(count(html, 'data-banner'), 0);
   assert.match(plain(html), new RegExp(`Data up to ${formatDate(snap.meta.last_date)}\\. Checking for newer figures`));
   assert.match(html, /<svg[^>]*role="img"/);
-  assert.match(plain(html), /Delhi petrol held at 102\.12 on all \d+ days shown, with no revision\./);
+  assert.match(plain(html), new RegExp(`Delhi petrol held at ${snap.latest.petrol.delhi.toFixed(2).replace('.', '\\.')} on all \\d+ days shown, with no revision\\.`));
   assert.ok(html.includes(snap.latest.petrol.delhi.toFixed(2)));
 });
 
@@ -187,7 +189,7 @@ test('a price that has held for a month or more says for how long instead of a r
 
 test('a price that moved lately still shows its change, next to the others that have held', () => {
   const newest = weekAfterBuild();
-  const day ={ ...snap.latest, date: newest, petrol: { ...snap.latest.petrol, delhi: 103.5 } };
+  const day = { ...snap.latest, date: newest, petrol: { ...snap.latest.petrol, delhi: newDelhi() } };
   const rows = [...monthBody().data];
   // The build's days, then flat days at the old price up to the day before `newest`, which alone has the new price.
   for (let d = Date.parse(`${snap.latest.date}T00:00:00Z`) + 86400000; d < Date.parse(`${newest}T00:00:00Z`); d += 86400000) {
@@ -199,7 +201,7 @@ test('a price that moved lately still shows its change, next to the others that 
   const board = boardOf(page('/', state));
   assert.equal(count(board, 'class="board__held"'), 7);
   assert.equal(count(board, 'class="board__changes"'), 1);
-  assert.match(plain(board), /Delhi 103\.50 1 day \+1\.38 7 days \+1\.38 30 days \+1\.38/);
+  assert.match(plain(board), newDelhiRow());
   assert.match(plain(board), /how long it has stayed the same, or its change over the last 1, 7 and 30 days/);
 });
 
@@ -219,8 +221,8 @@ test('a day newer than the build reaches the board and moves the playground wind
   const newest = weekAfterBuild();
   const state = newerDay(newest);
   const home = page('/', state);
-  assert.ok(home.includes('103.50'), 'the new Delhi price is on the board');
-  assert.match(plain(boardOf(home)), /Delhi 103\.50 1 day \+1\.38 7 days \+1\.38 30 days \+1\.38/, 'and what it moved over the last 1, 7 and 30 days');
+  assert.ok(home.includes(newDelhi().toFixed(2)), 'the new Delhi price is on the board');
+  assert.match(plain(boardOf(home)), newDelhiRow(), 'and what it moved over the last 1, 7 and 30 days');
   assert.match(plain(home), new RegExp(`newest day ${formatDate(newest)}`));
   const playground = page('/playground', state);
   const { from } = exampleWindow(newest, 30);

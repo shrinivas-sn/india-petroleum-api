@@ -11,7 +11,7 @@ import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { createServer } from 'vite';
 import { writeSnapshot } from './build-snapshot.mjs';
-import { formatDate } from '../src/lib/format.js';
+import { formatChange, formatCount, formatDate } from '../src/lib/format.js';
 import { bannerFor, offlineState, readLive, snapshotState } from '../src/lib/live-state.js';
 import { exampleWindow } from '../src/lib/range.js';
 
@@ -97,21 +97,31 @@ const monthBody = () => snap.examples.board.body;
 const fresh = () => readLive(metaBody(), latestBody(), NOW, monthBody());
 const stale = (daysBehind = 5) => readLive(metaBody({ days_behind: daysBehind }), latestBody(), NOW, monthBody());
 // The stored data grows every day, so "later than the build" is counted from the build's newest day.
-const newDelhi = () => Math.round((snap.latest.petrol.delhi + 1.38) * 100) / 100;
-const newDelhiRow = () => new RegExp(`Delhi ${newDelhi().toFixed(2).replace('.', '\\.')} 1 day \\+1\\.38 7 days \\+1\\.38 30 days \\+1\\.38`);
-const weekAfterBuild = () => new Date(Date.parse(`${snap.latest.date}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
+const isoDaysFrom = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+const weekAfterBuild = () => isoDaysFrom(snap.latest.date, 7);
 const offline = () => offlineState(snapshotState(snap), 'Could not reach the API. Check your connection and try again.', new Date(`${weekAfterBuild()}T03:00:00Z`));
-const newerDay = (date) => {
-  const day = { ...snap.latest, date, petrol: { ...snap.latest.petrol, delhi: newDelhi() }, diesel: { ...snap.latest.diesel } };
-  // The rows the API would return: the build's days, then one flat day after another up to the new one,
-  // which alone carries the new Delhi petrol price.
+// A new day whose Delhi petrol price moved 1.38 from the build's, whatever the build's price was.
+const newDelhi = () => Math.round((snap.latest.petrol.delhi + 1.38) * 100) / 100;
+const delhiDay = (date) => ({ ...snap.latest, date, petrol: { ...snap.latest.petrol, delhi: newDelhi() }, diesel: { ...snap.latest.diesel } });
+// The rows the API would return: the build's days, then one flat day after another up to `day`, which alone
+// carries the new Delhi petrol price.
+const rowsUpTo = (day) => {
   const rows = [...monthBody().data];
-  for (let d = Date.parse(`${snap.latest.date}T00:00:00Z`) + 86400000; d < Date.parse(`${date}T00:00:00Z`); d += 86400000) {
-    rows.push({ ...snap.latest, date: new Date(d).toISOString().slice(0, 10) });
-  }
+  for (let d = isoDaysFrom(snap.latest.date, 1); d < day.date; d = isoDaysFrom(d, 1)) rows.push({ ...snap.latest, date: d });
   rows.push(day);
-  return readLive(metaBody({ last_date: date, day_count: snap.meta.day_count + 7 }), latestBody(day), NOW, { success: true, data: rows });
+  return rows;
 };
+// The Delhi board cell as text, each change worked out from the rows themselves, so a real price move in the
+// stored data before the build changes the expected 30-day figure instead of failing the test.
+const delhiCell = (rows, newest) => {
+  const delhiOn = new Map(rows.map((row) => [row.date, row.petrol?.delhi]));
+  const changes = [[1, '1 day'], [7, '7 days'], [30, '30 days']].map(([n, label]) => {
+    const before = delhiOn.get(isoDaysFrom(newest, -n));
+    return `${label} ${typeof before === 'number' ? formatChange(newDelhi() - before) : '–'}`;
+  });
+  return `Delhi ${newDelhi().toFixed(2)} ${changes.join(' ')}`;
+};
+const newerDay = (date) => readLive(metaBody({ last_date: date, day_count: snap.meta.day_count + 7 }), latestBody(delhiDay(date)), NOW, { success: true, data: rowsUpTo(delhiDay(date)) });
 const boardOf = (html) => html.slice(html.indexOf('<table class="board">'), html.indexOf('</table>', html.indexOf('<table class="board">')) + 8);
 
 const ROUTES = () => ['/', '/docs', '/playground', '/guides', `/guides/${mod.guides.GUIDES[0].id}`, '/status', '/no-such-page'];
@@ -121,7 +131,8 @@ test('the prerendered page (snapshot state) shows build-time figures, says so, a
   assert.equal(count(html, 'data-banner'), 0);
   assert.match(plain(html), new RegExp(`Data up to ${formatDate(snap.meta.last_date)}\\. Checking for newer figures`));
   assert.match(html, /<svg[^>]*role="img"/);
-  assert.match(plain(html), new RegExp(`Delhi petrol held at ${snap.latest.petrol.delhi.toFixed(2).replace('.', '\\.')} on all \\d+ days shown, with no revision\\.`));
+  // The exact sentence for each kind of window is covered in src/lib/history.test.mjs.
+  assert.match(plain(html), /Delhi petrol (held at|ended at|rose from|fell from) \d+\.\d{2}/);
   assert.ok(html.includes(snap.latest.petrol.delhi.toFixed(2)));
 });
 
@@ -166,42 +177,44 @@ test('with no last-change dates the board shows the change over 1, 7 and 30 days
     assert.equal(count(board, '<dt>1 day</dt>'), 8, name);
     assert.equal(count(board, '<dt>7 days</dt>'), 8, name);
     assert.equal(count(board, '<dt>30 days</dt>'), 8, name);
-    assert.doesNotMatch(plain(board), /Last change|No change on record|May|2026-/, `${name}: nothing about an old price move`);
+    assert.doesNotMatch(plain(board), /Last change|No change on record|Unchanged for|2026-/, `${name}: nothing about an old price move`);
     assert.match(plain(board), /Under each price: the change over the last 1, 7 and 30 days/, name);
   }
 });
 
 test('a price that has held for a month or more says for how long instead of a row of zeros, in the build and when live', () => {
-  const since = snap.examples.latest.body.meta.last_change.petrol.delhi.date;
-  const days = daysBetween(since, snap.latest.date);
-  assert.ok(days >= 30, 'the build data has held for a month or more, otherwise this test says nothing');
-  const live = readLive(metaBody(), latestBody(snap.latest, snap.examples.latest.body.meta.last_change), NOW, monthBody());
-  for (const [name, state] of [['prerendered', snapshotState(snap)], ['live', live]]) {
-    const board = boardOf(page('/', state));
-    assert.equal(count(board, 'class="board__held"'), 8, `${name}: one line per city and fuel`);
-    assert.equal(count(board, 'board__changes'), 0, `${name}: no rows of changes`);
-    assert.equal(count(plain(board), `Unchanged for ${days} days since ${formatDate(since)}`), 8, name);
-    assert.doesNotMatch(plain(board), /0\.00|Last change|No change on record/, `${name}: no zeros, no old wording`);
-    assert.match(plain(board), /Under each price: how long it has stayed the same\./, name);
-    assert.ok(board.includes(snap.latest.petrol.delhi.toFixed(2)), name);
-  }
+  // Live: every price last moved 60 days before the build, so the outcome does not depend on the stored data.
+  const since = isoDaysFrom(snap.latest.date, -60);
+  const live = readLive(metaBody(), latestBody(snap.latest, lastChangeOn(since)), NOW, monthBody());
+  const board = boardOf(page('/', live));
+  assert.equal(count(board, 'class="board__held"'), 8, 'one line per city and fuel');
+  assert.equal(count(board, 'board__changes'), 0, 'no rows of changes');
+  assert.equal(count(plain(board), `Unchanged for ${formatCount(60)} days since ${formatDate(since)}`), 8);
+  assert.doesNotMatch(plain(board), /Last change|No change on record/, 'no old wording');
+  assert.match(plain(board), /Under each price: how long it has stayed the same\./);
+  assert.ok(board.includes(snap.latest.petrol.delhi.toFixed(2)));
+
+  // Prerendered: the build's own last-change dates decide, price by price, which cells say how long they held.
+  const built = snap.examples.latest.body.meta.last_change;
+  const heldCells = ['petrol', 'diesel'].flatMap((fuel) =>
+    ['delhi', 'mumbai', 'chennai', 'kolkata'].map((city) => built?.[fuel]?.[city]?.date).filter((d) => d && daysBetween(d, snap.latest.date) >= 30),
+  );
+  const prerendered = plain(boardOf(page('/', snapshotState(snap))));
+  assert.equal(count(prerendered, 'Unchanged for'), heldCells.length, 'one held line per price that has not moved for 30 days or more');
+  for (const d of heldCells) assert.ok(prerendered.includes(`Unchanged for ${formatCount(daysBetween(d, snap.latest.date))} days since ${formatDate(d)}`), d);
 });
 
 test('a price that moved lately still shows its change, next to the others that have held', () => {
   const newest = weekAfterBuild();
-  const day = { ...snap.latest, date: newest, petrol: { ...snap.latest.petrol, delhi: newDelhi() } };
-  const rows = [...monthBody().data];
-  // The build's days, then flat days at the old price up to the day before `newest`, which alone has the new price.
-  for (let d = Date.parse(`${snap.latest.date}T00:00:00Z`) + 86400000; d < Date.parse(`${newest}T00:00:00Z`); d += 86400000) {
-    rows.push({ ...snap.latest, date: new Date(d).toISOString().slice(0, 10) });
-  }
-  rows.push(day);
-  const lastChange = lastChangeOn('2026-05-25', { 'petrol.delhi': newest });
+  const day = delhiDay(newest);
+  const rows = rowsUpTo(day);
+  const lastChange = lastChangeOn(isoDaysFrom(snap.latest.date, -60), { 'petrol.delhi': newest });
   const state = readLive(metaBody({ last_date: newest }), latestBody(day, lastChange), NOW, { success: true, data: rows });
   const board = boardOf(page('/', state));
   assert.equal(count(board, 'class="board__held"'), 7);
   assert.equal(count(board, 'class="board__changes"'), 1);
-  assert.match(plain(board), newDelhiRow());
+  assert.ok(plain(board).includes(delhiCell(rows, newest)), delhiCell(rows, newest));
+  assert.ok(delhiCell(rows, newest).includes('1 day +1.38 7 days +1.38'), 'the move is one day old and the week before it was flat');
   assert.match(plain(board), /how long it has stayed the same, or its change over the last 1, 7 and 30 days/);
 });
 
@@ -213,8 +226,9 @@ test('without a month of rows the board shows today\'s prices alone, with no cha
 });
 
 test('without last-change dates, a price that did not move reads 0.00 for every period', () => {
-  const board = plain(boardOf(page('/', fresh())));
-  assert.match(board, /1 day 0\.00 7 days 0\.00 30 days 0\.00/);
+  const flat = { success: true, data: monthBody().data.map((row) => ({ ...snap.latest, date: row.date })) };
+  const board = plain(boardOf(page('/', readLive(metaBody(), latestBody(), NOW, flat))));
+  assert.equal(count(board, '1 day 0.00 7 days 0.00 30 days 0.00'), 8);
 });
 
 test('a day newer than the build reaches the board and moves the playground window with it', () => {
@@ -222,7 +236,8 @@ test('a day newer than the build reaches the board and moves the playground wind
   const state = newerDay(newest);
   const home = page('/', state);
   assert.ok(home.includes(newDelhi().toFixed(2)), 'the new Delhi price is on the board');
-  assert.match(plain(boardOf(home)), newDelhiRow(), 'and what it moved over the last 1, 7 and 30 days');
+  const cell = delhiCell(rowsUpTo(delhiDay(newest)), newest);
+  assert.ok(plain(boardOf(home)).includes(cell), `and what it moved over the last 1, 7 and 30 days: ${cell}`);
   assert.match(plain(home), new RegExp(`newest day ${formatDate(newest)}`));
   const playground = page('/playground', state);
   const { from } = exampleWindow(newest, 30);
@@ -328,8 +343,10 @@ test('the whole history draws: every stored day, and the numbered moves only for
   assert.match(plain(all), new RegExp(`${delhi.length.toLocaleString('en-IN')} days`));
   assert.equal(count(all, 'class="marker"'), markers.length, 'every numbered move is inside the full history');
   assert.match(plain(all), /Numbered points mark the largest single-day moves/);
-  const recent = chartHtml({ view: viewOf(delhi.slice(-93)), markers });
-  assert.equal(count(recent, 'class="marker"'), 0, 'none of the moves falls in the last three months');
+  const lastThreeMonths = delhi.slice(-93);
+  const recent = chartHtml({ view: viewOf(lastThreeMonths), markers });
+  const inside = markers.filter((m) => m.date >= lastThreeMonths[0].date && m.date <= lastThreeMonths.at(-1).date).length;
+  assert.equal(count(recent, 'class="marker"'), inside, 'only the moves inside the last three months are drawn');
   const mumbai = realDays.map((d) => ({ date: d.date, petrol: { mumbai: d.petrol.mumbai }, diesel: { mumbai: d.diesel.mumbai } }));
   const other = chartHtml({ view: viewOf(mumbai, 'mumbai'), city: 'mumbai', rangeId: 'all', markers });
   assert.equal(count(other, 'class="marker"'), 0, 'the numbered moves are Delhi moves');

@@ -25,7 +25,8 @@ const resync = (d) => {
 
 test('the fixture and the real stored data both pass, so the checks below are not rejecting everything', () => {
   assert.doesNotThrow(() => validateDataset(fixture(), { now: NOW }));
-  assert.doesNotThrow(() => validateDataset(bundled(), { now: new Date('2026-10-24T05:00:00Z') }));
+  // The stored data grows every day, so it is checked against the real clock, not a fixed date.
+  assert.doesNotThrow(() => validateDataset(bundled()));
 });
 
 test('a dataset that ends in the future is refused, so one bad file cannot lock out every real one', () => {

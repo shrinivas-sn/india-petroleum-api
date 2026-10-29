@@ -96,7 +96,9 @@ const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.pa
 const monthBody = () => snap.examples.board.body;
 const fresh = () => readLive(metaBody(), latestBody(), NOW, monthBody());
 const stale = (daysBehind = 5) => readLive(metaBody({ days_behind: daysBehind }), latestBody(), NOW, monthBody());
-const offline = () => offlineState(snapshotState(snap), 'Could not reach the API. Check your connection and try again.', new Date('2026-10-30T03:00:00Z'));
+// The stored data grows every day, so "later than the build" is counted from the build's newest day.
+const weekAfterBuild = () => new Date(Date.parse(`${snap.latest.date}T00:00:00Z`) + 7 * 86400000).toISOString().slice(0, 10);
+const offline = () => offlineState(snapshotState(snap), 'Could not reach the API. Check your connection and try again.', new Date(`${weekAfterBuild()}T03:00:00Z`));
 const newerDay = (date) => {
   const day = { ...snap.latest, date, petrol: { ...snap.latest.petrol, delhi: 103.5 }, diesel: { ...snap.latest.diesel } };
   // The rows the API would return: the build's days, then one flat day after another up to the new one,
@@ -148,7 +150,7 @@ test('offline keeps the build-time figures on screen, says so everywhere, and of
     assert.match(plain(html), /Live data unavailable\./, route);
     assert.match(plain(html), /Could not reach the API\. Check your connection/, route);
     assert.match(plain(html), /Try again/, route);
-    assert.match(plain(html), /7 days ago/, `${route}: the build is seven days old on 30 Oct`);
+    assert.match(plain(html), /7 days ago/, `${route}: the build is seven days old`);
   }
   const home = plain(page('/', state));
   assert.match(home, /Showing data from \d+ \w+ \d{4}, the last build\. The live API did not answer\./);
@@ -184,8 +186,8 @@ test('a price that has held for a month or more says for how long instead of a r
 });
 
 test('a price that moved lately still shows its change, next to the others that have held', () => {
-  const newest = '2026-10-30';
-  const day = { ...snap.latest, date: newest, petrol: { ...snap.latest.petrol, delhi: 103.5 } };
+  const newest = weekAfterBuild();
+  const day ={ ...snap.latest, date: newest, petrol: { ...snap.latest.petrol, delhi: 103.5 } };
   const rows = [...monthBody().data];
   // The build's days, then flat days at the old price up to the day before `newest`, which alone has the new price.
   for (let d = Date.parse(`${snap.latest.date}T00:00:00Z`) + 86400000; d < Date.parse(`${newest}T00:00:00Z`); d += 86400000) {
@@ -214,16 +216,17 @@ test('without last-change dates, a price that did not move reads 0.00 for every 
 });
 
 test('a day newer than the build reaches the board and moves the playground window with it', () => {
-  const state = newerDay('2026-10-30');
+  const newest = weekAfterBuild();
+  const state = newerDay(newest);
   const home = page('/', state);
   assert.ok(home.includes('103.50'), 'the new Delhi price is on the board');
   assert.match(plain(boardOf(home)), /Delhi 103\.50 1 day \+1\.38 7 days \+1\.38 30 days \+1\.38/, 'and what it moved over the last 1, 7 and 30 days');
-  assert.match(plain(home), /newest day 30 Oct 2026/);
+  assert.match(plain(home), new RegExp(`newest day ${formatDate(newest)}`));
   const playground = page('/playground', state);
-  const { from } = exampleWindow('2026-10-30', 30);
-  assert.match(playground, new RegExp(`<input type="date" [^>]*max="2026-10-30"`));
+  const { from } = exampleWindow(newest, 30);
+  assert.match(playground, new RegExp(`<input type="date" [^>]*max="${newest}"`));
   assert.ok(playground.includes(`value="${from}"`), `from defaults to ${from}`);
-  assert.ok(playground.includes('value="2026-10-30"'), 'to defaults to the newest day');
+  assert.ok(playground.includes(`value="${newest}"`), 'to defaults to the newest day');
 });
 
 test('the playground is compact: one form, chart and table together, code samples folded, newest day first', () => {

@@ -3425,5 +3425,6 @@
 {"date":"2026-10-30","petrol":{"delhi":102.12,"mumbai":111.21,"chennai":107.77,"kolkata":113.51},"diesel":{"delhi":95.2,"mumbai":97.83,"chennai":99.55,"kolkata":99.82}},
 {"date":"2026-10-31","petrol":{"delhi":102.12,"mumbai":111.21,"chennai":107.77,"kolkata":113.51},"diesel":{"delhi":95.2,"mumbai":97.83,"chennai":99.55,"kolkata":99.82}},
 {"date":"2026-11-01","petrol":{"delhi":102.12,"mumbai":111.21,"chennai":107.77,"kolkata":113.51},"diesel":{"delhi":95.2,"mumbai":97.83,"chennai":99.55,"kolkata":99.82}},
-{"date":"2026-11-02","petrol":{"delhi":102.12,"mumbai":111.21,"chennai":107.77,"kolkata":113.51},"diesel":{"delhi":95.2,"mumbai":97.83,"chennai":99.55,"kolkata":99.82}}
+{"date":"2026-11-02","petrol":{"delhi":102.12,"mumbai":111.21,"chennai":107.77,"kolkata":113.51},"diesel":{"delhi":95.2,"mumbai":97.83,"chennai":99.55,"kolkata":99.82}},
+{"date":"2026-11-03","petrol":{"delhi":102.12,"mumbai":111.21,"chennai":107.77,"kolkata":113.51},"diesel":{"delhi":95.2,"mumbai":97.83,"chennai":99.55,"kolkata":99.82}}
 ]}

@@ -1,11 +1,11 @@
 {
   "source": "PPAC",
   "attribution": "Source: Petroleum Planning & Analysis Cell (PPAC), Ministry of Petroleum and Natural Gas, Government of India",
-  "source_url": "https://ppac.gov.in/uploads/page-images/1794982557_PP_9_a_DailyPriceMSHSD_Metro_18.11.2026.pdf",
-  "source_posted_date": "2026-11-18",
-  "sha256": "b09b08fdc9ed134f89abe33f6e53b6ecd91b3cfcb2f206efa0d4ee921243dda2",
-  "fetched_at": "2026-11-18T11:56:38.587Z",
+  "source_url": "https://ppac.gov.in/uploads/page-images/1795074477_PP_9_a_DailyPriceMSHSD_Metro_19.11.2026.pdf",
+  "source_posted_date": "2026-11-19",
+  "sha256": "971251e829450d889485e2e5061a96121d19776aca11f9aa2f896c711d8ab72b",
+  "fetched_at": "2026-11-19T11:54:02.868Z",
   "first_date": "2017-06-16",
-  "last_date": "2026-11-18",
-  "day_count": 3443
+  "last_date": "2026-11-19",
+  "day_count": 3444
 }
